@@ -1,0 +1,12 @@
+{"id":"e_000001","ts":1000,"room":"room-1","source":"speech","speaker":"clinician","quote":"Her breathing has got worse since this morning.","code":"R06.0","observation":"dyspnoea","value":null}
+{"id":"e_000002","ts":2000,"room":"room-1","source":"vital","speaker":"unknown","quote":"","code":null,"observation":"resp_rate","value":24}
+{"id":"e_000003","ts":3000,"room":"room-2","source":"speech","speaker":"nurse","quote":"Bed two is still waiting on the chest film.","code":null,"observation":"imaging_pending","value":null}
+{"id":"e_000004","ts":4000,"room":"room-1","source":"order","speaker":"unknown","quote":"","code":null,"observation":"order_chest_xray","value":null}
+{"id":"e_000005","ts":5000,"room":"room-3","source":"speech","speaker":"patient","quote":"The pain is about a seven now.","code":"R52","observation":"pain_score","value":7}
+{"id":"e_000006","ts":6000,"room":"room-1","source":"vital","speaker":"unknown","quote":"","code":null,"observation":"spo2","value":91}
+{"id":"e_000007","ts":7000,"room":"room-2","source":"movement","speaker":"unknown","quote":"","code":null,"observation":"to_imaging","value":null}
+{"id":"e_000008","ts":8000,"room":"room-3","source":"speech","speaker":"nurse","quote":"I have given the paracetamol, I will check again in twenty.","code":null,"observation":"analgesia_given","value":null}
+{"id":"e_000009","ts":9000,"room":"room-1","source":"result","speaker":"unknown","quote":"","code":null,"observation":"chest_xray_reported","value":null}
+{"id":"e_000010","ts":10000,"room":"room-1","source":"speech","speaker":"clinician","quote":"Film shows a left base consolidation, start antibiotics.","code":"J18.9","observation":"consolidation","value":null}
+{"id":"e_000011","ts":11000,"room":"room-3","source":"lab","speaker":"unknown","quote":"","code":null,"observation":"crp","value":88}
+{"id":"e_000012","ts":11001,"room":"room-2","source":"action","speaker":"unknown","quote":"","code":null,"observation":"task_closed","value":null}
