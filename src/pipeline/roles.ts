@@ -2,12 +2,24 @@
 //
 // Pure function of its arguments. No clock, no network, no stored state (D8).
 //
-// Two paths, and the refusal matters more than the heuristic:
+// Paths, and the refusal matters more than the heuristic:
 //
-//   more than one slot -> decide by question density, tie-broken by clinical
-//                         vocabulary, and report which of the two decided it
 //   exactly one slot   -> return the events untouched, speaker 'unknown',
 //                         resolved: false
+//   one slot claims a  -> pin that slot, no inference involved
+//   clinician role
+//   anything else      -> decide by question density, tie-broken by clinical
+//                         vocabulary, and report which of the two decided it
+//
+// Self-identification runs first because it is testimony, not inference. A
+// clinician who says 'I'm the doctor' has answered the question directly, and
+// question density is only ever a proxy for the same fact — a proxy V1 watched
+// invert on a clinician who dismisses rather than enquires, where the patient
+// asked the only question in the recording. When someone states their role,
+// stop guessing.
+//
+// Two slots both claiming is a contradiction, not a tie to be broken, so it
+// falls through to the heuristic rather than picking the louder one.
 //
 // A single slot means diarization gave us nothing to separate. Labelling that
 // speaker 'clinician' would put an invented attribution on the evidence line,
@@ -19,9 +31,11 @@
 // from event id to slot. That keeps contracts/events.ts frozen and keeps this
 // function honest about what it was given.
 
-import type { Event, EventId, Speaker } from "../contracts/index.ts";
+import type { Event, EventId, Millis, Speaker } from "../contracts/index.ts";
 
 export type RoleMethod =
+  /** A slot stated its own clinical role out loud. Testimony, not inference. */
+  | "self-identification"
   /** Two or more slots, separated by how often each one asks questions. */
   | "question-density"
   /** Question rates tied; clinical vocabulary decided it. */
@@ -102,6 +116,107 @@ function withSpeaker(event: Event, speaker: Speaker): Event {
   return Object.freeze({ ...event, speaker });
 }
 
+/**
+ * How long after the first utterance a role claim still counts.
+ *
+ * Introductions happen at the top of an encounter. Thirty seconds in, 'I'm the
+ * doctor' is far more likely to be someone reporting what a doctor said than
+ * someone introducing themselves, and a claim we cannot trust is worse than no
+ * claim at all — the fallback still works.
+ *
+ * Measured from the first slotted utterance, not from a clock: this function
+ * reads no time of its own (D8).
+ */
+const SELF_ID_WINDOW_MS = 30_000;
+
+/**
+ * A first-person claim to a clinical role.
+ *
+ * Deliberately first-person only. 'are you the doctor' and 'the doctor said'
+ * are about a clinician, not by one, and neither attributes anything.
+ *
+ * The trailing lookahead is what stops 'I'm the doctor's daughter' — a family
+ * member, not a clinician — from taking the clinician slot. Corti drops
+ * apostrophes unpredictably (V1b), so both spellings are excluded.
+ *
+ * Kept short on purpose. A long list of titles would quietly become a job
+ * classifier, and every entry added here is one more way to mislabel evidence.
+ */
+const ROLE_CLAIM =
+  /\b(?:i am|i'm|im)\s+(?:the\s+|your\s+|a\s+|an\s+)?(?:doctor|nurse|consultant|registrar|physician|surgeon|clinician)(?!'?s\b)/i;
+
+interface RoleClaim {
+  readonly slot: number;
+  readonly eventId: EventId;
+  readonly quote: string;
+}
+
+/**
+ * Every slot that claimed a clinical role inside the opening window, at most
+ * one claim each, in slot order.
+ *
+ * Returning all of them rather than the first is the point: the caller has to
+ * be able to tell one claim from two, and two claims must not resolve.
+ */
+function clinicianClaims(
+  events: readonly Event[],
+  slots: ReadonlyMap<EventId, number>,
+): readonly RoleClaim[] {
+  let origin: Millis | undefined;
+  for (const event of events) {
+    if (event.source !== "speech") continue;
+    if (!slots.has(event.id)) continue;
+    if (origin === undefined || event.ts < origin) origin = event.ts;
+  }
+  if (origin === undefined) return [];
+
+  const firstBySlot = new Map<number, RoleClaim>();
+  for (const event of events) {
+    if (event.source !== "speech") continue;
+    const slot = slots.get(event.id);
+    if (slot === undefined) continue;
+    if (event.ts > origin + SELF_ID_WINDOW_MS) continue;
+    if (firstBySlot.has(slot)) continue;
+    if (!ROLE_CLAIM.test(event.quote)) continue;
+    firstBySlot.set(slot, Object.freeze({ slot, eventId: event.id, quote: event.quote }));
+  }
+  return [...firstBySlot.values()].sort((a, b) => a.slot - b.slot);
+}
+
+/**
+ * Pin one slot as the clinician, label every other slot patient side, and
+ * relabel the events accordingly. Shared by both resolving paths so that a
+ * self-identified assignment and an inferred one are byte-identical in shape.
+ */
+function resolve(
+  events: readonly Event[],
+  slots: ReadonlyMap<EventId, number>,
+  profiles: readonly SlotProfile[],
+  clinicianSlot: number,
+  method: RoleMethod,
+  note: string,
+): RoleAssignment {
+  const assigned = profiles.map((p) =>
+    Object.freeze({ ...p, role: (p.slot === clinicianSlot ? "clinician" : "patient") as Speaker }),
+  );
+
+  const roleOf = new Map(assigned.map((p) => [p.slot, p.role]));
+  const relabelled = events.map((event) => {
+    if (event.source !== "speech") return event;
+    const slot = slots.get(event.id);
+    if (slot === undefined) return event;
+    return withSpeaker(event, roleOf.get(slot) ?? "unknown");
+  });
+
+  return Object.freeze({
+    events: Object.freeze(relabelled),
+    method,
+    resolved: true,
+    slots: Object.freeze(assigned),
+    note,
+  });
+}
+
 function unresolved(
   events: readonly Event[],
   method: RoleMethod,
@@ -167,6 +282,28 @@ export function assignRoles(
     );
   }
 
+  // Testimony first. Someone who stated their role has already answered the
+  // question the heuristic below only estimates an answer to.
+  const claims = clinicianClaims(events, slots);
+
+  if (claims.length === 1) {
+    const claim = claims[0]!;
+    return resolve(
+      events,
+      slots,
+      profiles,
+      claim.slot,
+      "self-identification",
+      `Slot ${claim.slot} identified itself as the clinician within the first ` +
+        `${SELF_ID_WINDOW_MS / 1000}s: "${claim.quote}" (${claim.eventId}).`,
+    );
+  }
+
+  // More than one slot claiming a clinical role is a contradiction, and the
+  // right response to a contradiction is not to pick a side. Fall through and
+  // let the heuristic decide on turn shape instead, which at least reports
+  // itself honestly as an inference.
+
   // Highest question rate is the clinician. Consultations are asymmetric: the
   // clinician drives, the patient answers. Vocabulary only settles a draw.
   const ranked = profiles.slice().sort(
@@ -188,18 +325,6 @@ export function assignRoles(
   }
 
   const clinicianSlot = top.slot;
-  const assigned = profiles.map((p) =>
-    Object.freeze({ ...p, role: (p.slot === clinicianSlot ? "clinician" : "patient") as Speaker }),
-  );
-
-  const roleOf = new Map(assigned.map((p) => [p.slot, p.role]));
-  const relabelled = events.map((event) => {
-    if (event.source !== "speech") return event;
-    const slot = slots.get(event.id);
-    if (slot === undefined) return event;
-    return withSpeaker(event, roleOf.get(slot) ?? "unknown");
-  });
-
   const method: RoleMethod = byQuestions ? "question-density" : "clinical-vocabulary";
   const note = byQuestions
     ? `Slot ${clinicianSlot} asked ${Math.round(top.questionRate * 100)}% questions against ` +
@@ -207,11 +332,5 @@ export function assignRoles(
     : `Question rates tied at ${Math.round(top.questionRate * 100)}%, so clinical vocabulary decided it: ` +
       `slot ${clinicianSlot} is the clinician.`;
 
-  return Object.freeze({
-    events: Object.freeze(relabelled),
-    method,
-    resolved: true,
-    slots: Object.freeze(assigned),
-    note,
-  });
+  return resolve(events, slots, profiles, clinicianSlot, method, note);
 }

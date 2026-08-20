@@ -253,3 +253,99 @@ test("non-speech events pass through untouched and do not skew the counts", () =
   assert.equal(result.resolved, true);
   assert.equal(result.slots.reduce((n, s) => n + s.utterances, 0), 10);
 });
+
+
+// -------------------------------------- path 0: a slot states its own role
+//
+// These use the verbatim room-02_deteriorating_v1 transcript, because that
+// recording is the reason this path exists. Question density gets it exactly
+// backwards there: the doctor dismisses and never asks, while the patient asks
+// both questions in the conversation. The doctor does, however, say who he is
+// in the opening sentence.
+
+const ROOM_02: readonly (readonly [number, string])[] = [
+  [0, "So good morning Anna Jensen in room one oh one I'm the doctor the chart says that you had a quiet night your CHOX was one and you're doing fine"],
+  [1, "I was fine earlier but something has changed I have a sharp pain here in my chest"],
+  [0, "you have pneumonia coughing hurts that's hardly surprising"],
+  [1, "no this is different I started it started about 20 minutes ago the pain is 9/10 and I cannot catch my breath"],
+  [0, "but and yesterday you said your pain was only 1/10"],
+  [1, "that was yesterday now it's nine and I'm getting worse"],
+  [0, "you're th talking to me and you're getting air it can't be that bad"],
+  [1, "but I'm puffing just from sitting here could this be a blood clot"],
+];
+
+test("self-identification fires on room-02 and beats the question-density answer", () => {
+  const { events, slots } = conversation(ROOM_02);
+  const result = assignRoles(events, slots);
+
+  assert.equal(result.method, "self-identification");
+  assert.equal(result.resolved, true);
+
+  const clinician = result.slots.find((s) => s.role === "clinician");
+  assert.equal(clinician?.slot, 0, "slot 0 said 'I'm the doctor'");
+  assert.equal(result.slots.find((s) => s.role === "patient")?.slot, 1);
+
+  // The point of the path: the heuristic would have inverted this. Slot 1 asks
+  // the only questions, so question density alone would have crowned it.
+  assert.ok(
+    clinician!.questionRate <= result.slots.find((s) => s.slot === 1)!.questionRate,
+    "slot 0 does not out-question slot 1 — the heuristic would have got this wrong",
+  );
+
+  // The note has to carry the utterance that decided it, verbatim, so the
+  // evidence line can quote it rather than assert it.
+  assert.match(result.note, /I'm the doctor/);
+  assert.match(result.note, /slot 0/i);
+
+  for (const event of result.events) {
+    const slot = slots.get(event.id)!;
+    assert.equal(event.speaker, slot === 0 ? "clinician" : "patient");
+  }
+});
+
+test("no role claim falls through to question density, unchanged", () => {
+  const { events, slots } = conversation(TWO_VOICES);
+  const result = assignRoles(events, slots);
+
+  assert.equal(result.method, "question-density");
+  assert.equal(result.resolved, true);
+  assert.equal(result.slots.find((s) => s.role === "clinician")?.slot, 0);
+});
+
+test("two slots both claiming a clinical role falls through rather than picking one", () => {
+  const { events, slots } = conversation([
+    [0, "I'm the doctor, what brings you in today?"],
+    [1, "I'm the nurse, I was with her overnight."],
+    [0, "How long has the pain been there?"],
+    [1, "Since about four this morning."],
+    [0, "Did anything change when she stood up?"],
+    [1, "It got worse."],
+  ]);
+  const result = assignRoles(events, slots);
+
+  // A contradiction is not a tie to be broken. The claim is discarded and the
+  // result reports itself honestly as an inference.
+  assert.notEqual(result.method, "self-identification");
+  assert.equal(result.method, "question-density");
+  assert.doesNotMatch(result.note, /identified itself/);
+});
+
+test("a role claim after the opening window does not count", () => {
+  const opening = speech("Right, let us start.", 1000);
+  const answer = speech("My chest has been hurting since Tuesday.", 2000);
+  const late = speech("I'm the doctor, as I said.", 1000 + 30_001);
+  const reply = speech("Does it hurt when you breathe in?", 1000 + 31_000);
+
+  const slots = new Map<EventId, number>([
+    [opening.id, 0],
+    [answer.id, 1],
+    [late.id, 0],
+    [reply.id, 1],
+  ]);
+  const result = assignRoles([opening, answer, late, reply], slots);
+
+  // Slot 0 claims the role, but says it 30s in, so the claim is ignored and
+  // slot 1 wins on questions instead.
+  assert.notEqual(result.method, "self-identification");
+  assert.equal(result.slots.find((s) => s.role === "clinician")?.slot, 1);
+});
