@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/main.ts",
-    "test": "node --import tsx --test",
-    "typecheck": "tsc --noEmit"
+	"test": "node --import tsx --test src/corti/transcribe.test.ts src/corti/stream.test.ts src/log/replay.test.ts src/log/store.test.ts src/pipeline/grounding.test.ts src/pipeline/roles.test.ts",
+	"typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "dotenv": "^17.0.0"
