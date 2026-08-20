@@ -9,34 +9,12 @@
 // the last event read. Nothing here reads the wall clock, which is what makes
 // replay to T exact.
 //
-// NOTE: the Event shape below mirrors CONTRACTS.md and belongs in
-// contracts/events.ts once that file lands. It is declared here only because
-// contracts/ is still empty; move it and re-import, do not maintain two copies.
+// The Event shape itself lives in contracts/events.ts. This file stores it,
+// it does not define it.
 
 import { appendFileSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 
-export type Millis = number;
-export type EventId = string;
-
-export type Source = "speech" | "vital" | "lab" | "movement" | "order" | "result" | "action";
-export type Speaker = "clinician" | "patient" | "nurse" | "family" | "unknown";
-
-export interface Event {
-  readonly id: EventId;
-  readonly ts: Millis;
-  readonly room: string;
-  readonly source: Source;
-  readonly speaker: Speaker;
-  /** Empty for non-speech sources. */
-  readonly quote: string;
-  /** Null if uncoded, and always null for feed sources. Only speech is coded. */
-  readonly code: string | null;
-  readonly observation: string;
-  readonly value: number | string | null;
-}
-
-/** An event as the caller supplies it. The log assigns the id. */
-export type EventInput = Omit<Event, "id">;
+import type { Event, EventId, EventInput, Millis } from "../contracts/index.ts";
 
 export interface EventLogOptions {
   /** JSONL mirror. Omit for a memory-only log. */

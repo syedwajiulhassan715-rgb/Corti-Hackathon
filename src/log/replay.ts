@@ -7,7 +7,8 @@
 // main.ts or server/index.ts; replay callers pass the timestamp of the last
 // event read. Nothing in here decides for itself what time it is.
 
-import type { EventLog, Event, Millis } from "./store.ts";
+import type { EventLog } from "./store.ts";
+import type { Event, Millis } from "../contracts/index.ts";
 
 /**
  * Every event with `ts <= until`, in append order.

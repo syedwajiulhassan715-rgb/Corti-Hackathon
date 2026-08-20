@@ -10,7 +10,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { EventLog, type EventInput } from "./store.ts";
+import { EventLog } from "./store.ts";
+import type { EventInput } from "../contracts/index.ts";
 import { replay } from "./replay.ts";
 
 const FIXTURE = join(import.meta.dirname, "../../fixtures/events/log12.jsonl");

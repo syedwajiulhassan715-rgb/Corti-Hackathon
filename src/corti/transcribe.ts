@@ -21,7 +21,7 @@
 import { readFileSync } from "node:fs";
 
 import type { DiskCache } from "./cache.ts";
-import type { Event, EventId, EventInput, Millis } from "../log/store.ts";
+import type { Event, EventId, EventInput, Millis } from "../contracts/index.ts";
 
 export type CortiEnvironment = "eu" | "us";
 

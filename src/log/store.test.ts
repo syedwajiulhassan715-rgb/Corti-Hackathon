@@ -10,7 +10,8 @@ import { readFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { EventLog, type EventInput } from "./store.ts";
+import { EventLog } from "./store.ts";
+import type { EventInput } from "../contracts/index.ts";
 
 const FIXTURE = join(import.meta.dirname, "../../fixtures/events/log12.jsonl");
 
