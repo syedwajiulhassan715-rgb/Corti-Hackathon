@@ -9,6 +9,19 @@ D4  Scoring deterministic and doctor-owned. Agent proposes fit. Human books by v
 D5  Event log is the sole interface. Engines and projections are pure functions.
 D6  Three rooms. One continuous rehearsed scenario.
 D7  Dispatcher before scheduler, Patient State before Coordination, no dependency between.
+D8  No clock module. Engines and projections are pure functions taking `now` as an
+    explicit argument. Live passes Date.now(); replay passes the timestamp of the last
+    event read. Offer expiry and Task.delayed are derived at read time, never fired.
+    Nothing under engines/ or projections/ may call Date.now(); only main.ts and
+    server/index.ts do, and they pass it down. When a human acts on an expiry, that
+    action is appended as an event.
+    Reason: a timer that fires is a second source of truth. Derived-at-read-time keeps
+    replay to T exact and removes every race between the tick and the log.
+D9  world/ emits events only. feeds, roster and inventory append to the log; their
+    snapshots are folds, never separate stores. MCP call results are appended as events
+    so action and outcome are both auditable.
+    Reason: a module holding its own state is a module nobody can replay. Appending the
+    outcome as well as the call means a failed offer is visible, not silently absent.
 
 ## Graveyard
 Vouch, medication reconciliation — killed on challenge fit.

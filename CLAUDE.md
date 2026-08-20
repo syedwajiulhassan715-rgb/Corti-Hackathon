@@ -18,6 +18,8 @@ A planned thing nobody discussed becomes a flag with the question to ask, never 
 The event log is the only interface between modules. No module reads another's state.
 engines/ and projections/ are pure functions from events. No network, no stored state.
 engines/rules/ is data, not logic. Threshold changes touch no code.
+engines/ and projections/ take `now` as an argument, never read it. Only main.ts and
+server/index.ts call Date.now().
 Every state change emits an event. Replay to T reproduces T exactly.
 
 ## API law
