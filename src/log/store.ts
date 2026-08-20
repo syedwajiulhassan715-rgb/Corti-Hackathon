@@ -79,7 +79,7 @@ export class EventLog {
   }
 
   /** Every event, in append order. A fresh array each call. */
-  all(): readonly Event[] {
+  all(): Event[] {
     return this.#events.slice();
   }
 
