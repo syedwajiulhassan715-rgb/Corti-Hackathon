@@ -55,6 +55,8 @@ cites a quote.
 ## 24-hour summary
 Three questions only: what changed, what was done, what still needs to happen.
 Every claim carries evidence. Nothing in the summary that is not in the log.
+projections/summary24 assembles the input, corti/generate produces the text. The
+projection decides what is true; generation decides only how it reads.
 
 ## Ward round order
 Fixed ladder, doctor's: urgent, deteriorating, waiting on urgent result, dischargeable
