@@ -29,11 +29,14 @@ carry only an index and a language tag, and the index has gaps (no 10, 23–25,
 through a first transcription pass; until then a row says `unverified`. Do not
 cite a clip in an eval or a demo while its row still says that.
 
-**Status as of 2026-08-20: one row verified, 23 still unverified.** Only
-`sample_17_en.wav` has been through Corti (V1 in `docs/VALIDATION.md`). Every
-other row below remains `unverified` — those descriptions do not exist yet, and
-the dictation-versus-consultation split across the set is unknown. Do not assume
-the other clips resemble sample_17.
+**Status as of 2026-08-20: four rows verified, 20 still unverified.** Four clips
+have been through Corti — `sample_17_en.wav` (V1), then `sample_9_en.m4a`,
+`sample_8_en.m4a` and `sample_13_en.wav` (V1b) — see `docs/VALIDATION.md`. All
+four are single-speaker dictation, across both capture families and four
+specialties, so the corpus is very likely a dictation corpus throughout. That is
+a strong prior, not a verified fact: the 20 rows still marked `unverified` have
+not been listened to or transcribed. Do not cite one until its row says what it
+holds.
 
 | File | Format | Duration | Size | Contains |
 |---|---|---|---|---|
@@ -44,11 +47,11 @@ the other clips resemble sample_17.
 | `sample_5_en.m4a` | AAC in M4A, 44100 Hz, mono | 7:05 | 3.5M | unverified |
 | `sample_6_en.m4a` | AAC in M4A, 44100 Hz, mono | 1:55 | 932K | unverified |
 | `sample_7_en.m4a` | AAC in M4A, 44100 Hz, mono | 2:46 | 1.4M | unverified |
-| `sample_8_en.m4a` | AAC in M4A, 44100 Hz, mono | 3:00 | 1.5M | unverified |
-| `sample_9_en.m4a` | AAC in M4A, 48000 Hz, mono | 1:58 | 956K | unverified |
+| `sample_8_en.m4a` | AAC in M4A, 44100 Hz, mono | 3:00 | 1.5M | **Single-speaker dictation.** Radiology report — lumbar spine MRI for herniated disc; L4-L5 posterior herniation, moderate canal stenosis, left L5 root impingement. Verified 2026-08-20 via V1b — transcript cached at `transcripts/sample_8_en.transcript.json` |
+| `sample_9_en.m4a` | AAC in M4A, 48000 Hz, mono | 1:58 | 956K | **Single-speaker dictation.** Operative report — right pterional craniotomy for clipping of a right MCA bifurcation aneurysm (surgeon Dr Williams). Speaker dictates no punctuation at all. Verified 2026-08-20 via V1b — transcript cached at `transcripts/sample_9_en.transcript.json` |
 | `sample_11_en.wav` | WAV PCM s16le, 16000 Hz, mono | 2:32 | 4.7M | unverified |
 | `sample_12_en.wav` | WAV PCM s16le, 16000 Hz, mono | 2:33 | 4.7M | unverified |
-| `sample_13_en.wav` | WAV PCM s16le, 16000 Hz, mono | 2:25 | 4.5M | unverified |
+| `sample_13_en.wav` | WAV PCM s16le, 16000 Hz, mono | 2:25 | 4.5M | **Single-speaker dictation.** Paediatric well-child check, 4-year-old — milestones, growth percentiles, exam, anticipatory guidance. No child or parent voice. Verified 2026-08-20 via V1b — transcript cached at `transcripts/sample_13_en.transcript.json` |
 | `sample_14_en.wav` | WAV PCM s16le, 16000 Hz, mono | 2:36 | 4.8M | unverified |
 | `sample_15_en.wav` | WAV PCM s16le, 16000 Hz, mono | 1:46 | 3.3M | unverified |
 | `sample_16_en.wav` | WAV PCM s16le, 16000 Hz, mono | 1:50 | 3.4M | unverified |
@@ -261,3 +264,4 @@ follow-up across two visits.
 |---|---|
 | 2026-08-20 | Imported from three organiser downloads; duplicate audio folder discarded; this file written |
 | 2026-08-20 | V1 run: `sample_17_en.wav` transcribed with `diarize:true`, row verified, transcript cached under `transcripts/` |
+| 2026-08-20 | V1b run: `sample_9_en.m4a`, `sample_8_en.m4a`, `sample_13_en.wav` transcribed with `diarize:true` + `spokenPunctuation:true`; all single-speaker dictation |

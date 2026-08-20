@@ -1,0 +1,12 @@
+{
+  "file": "fixtures/provided/audio/sample_8_en.m4a",
+  "interactionId": "feaf2adf-e592-464f-9d95-568ffbd19293",
+  "recordingId": "839ec64c-327b-4522-98b1-6ac644daf947",
+  "transcriptId": "db688a83-c23a-41f1-8935-5998d5346933",
+  "request": {
+    "primaryLanguage": "en",
+    "diarize": true,
+    "spokenPunctuation": true
+  },
+  "ranAt": "2026-08-20"
+}

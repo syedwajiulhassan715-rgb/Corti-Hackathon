@@ -86,6 +86,66 @@ V1  speakerId on multi-voice TTS mono, diarize true
        Next: run the same call on a clip that has two humans in it. If the provided audio
        is all dictation, the data scientist's multi-voice TTS becomes the blocker for V1.
 
+V1b  same call on a second file, picked as most likely to be multi-human
+     Ran 2026-08-20. Settings identical to V1 plus spokenPunctuation:true.
+
+     HOW THE FILE WAS PICKED
+       Filenames carry no content, so selection used measured turn-taking. ffmpeg
+       silencedetect at a threshold calibrated to the real noise floor (mean volume
+       -38 dB, so -30 dB found nothing; -45 dB used), pauses >= 0.7 s, per minute:
+         M4A family  (samples 1-9):   0.0-1.6/min, except sample_8 at 6.3 and sample_9 at 8.1
+         WAV family (samples 11-29):  2.9-6.2/min, sample_17 (known dictation) sits at 4.0
+       sample_9_en.m4a has 5x the pause density of its own capture family — the
+       strongest turn-taking signature in the corpus. M4A/AAC is natively accepted by
+       /recordings, so still no transcode.
+
+     RESULT: also single-speaker dictation. The proxy failed — pause density in this
+     corpus tracks dictation cadence, not turn-taking.
+
+     sample_9_en.m4a
+       segment count:      1
+       distinct speakerIds: [0]   participant: [0]   channel: [0]
+       turn boundaries:    none. One segment, start 0 ms -> end 117983 ms, whole file.
+       metadata.participantsRoles: None
+       credits: 0.012805   cached: fixtures/provided/transcripts/sample_9_en.transcript.json
+       what it is: Operative report — right pterional craniotomy for clipping of a right MCA bifurcation aneurysm, surgeon of record Dr Williams. Full operative narrative from positioning to closure. One surgeon dictating.
+
+     sample_8_en.m4a
+       segment count:      1
+       distinct speakerIds: [0]   participant: [0]   channel: [0]
+       turn boundaries:    none. One segment, start 1504 ms -> end 179504 ms, whole file.
+       metadata.participantsRoles: None
+       credits: 0.01963   cached: fixtures/provided/transcripts/sample_8_en.transcript.json
+       what it is: Radiology report — lumbar spine MRI, indication herniated disc. L4-L5 broad-based posterior herniation with moderate canal stenosis and left L5 root impingement. One radiologist dictating.
+
+     sample_13_en.wav
+       segment count:      1
+       distinct speakerIds: [0]   participant: [0]   channel: [0]
+       turn boundaries:    none. One segment, start 864 ms -> end 145306 ms, whole file.
+       metadata.participantsRoles: None
+       credits: 0.015795   cached: fixtures/provided/transcripts/sample_13_en.transcript.json
+       what it is: Paediatric well-child check, 4-year-old. Developmental milestones, growth percentiles, exam, anticipatory guidance. One clinician dictating; no child or parent voice.
+
+     spokenPunctuation:true — works, and it is input-dependent
+       sample_8 and sample_13 come back properly punctuated, with headings and line
+       breaks, because those speakers dictated punctuation out loud. Every literal
+       'Period' / 'Comma' / 'new paragraph' that polluted V1 is gone.
+       sample_9 comes back with zero periods and zero commas in 1836 characters — that
+       speaker never dictated any punctuation, so there was none to convert. The flag
+       does not invent punctuation; automaticPunctuation did not fill the gap either.
+       Consequence: transcript punctuation cannot be relied on as a sentence-boundary
+       signal. Anything segmenting text must not assume periods exist.
+
+     CONCLUSION AFTER FOUR FILES (17, 9, 8, 13 — both capture families)
+       Four for four: one segment, speakerId 0, no turn boundaries. Two capture setups,
+       four specialties, both file formats. The provided corpus is a DICTATION corpus,
+       not consultation recordings. Nothing in it can answer V1.
+       diarize:true is confirmed harmless and confirmed uninformative here — it has
+       never been given a file with two voices in it.
+       V1 stays UNANSWERED. pipeline/roles.ts stays UNKNOWN.
+       BLOCKER: the data scientist's multi-voice TTS is now on the critical path. Until
+       one two-voice clip exists, diarization is untested and the evidence-attribution
+       story ('quote, speaker, time') has no speaker.
 V2  medical coding scope
     Which code systems return, does coding run on segments or on facts?
     Result:
