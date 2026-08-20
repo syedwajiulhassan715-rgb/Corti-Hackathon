@@ -55,7 +55,7 @@ async function requestToken(
   config: CortiAuthConfig,
   fetchImpl: typeof globalThis.fetch,
 ): Promise<TokenResponse> {
-  const response = await fetchImpl(tokenUrl(config.environment), {
+  const response = await fetchImpl(tokenUrl(config.environment, config.tenantName), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -76,6 +76,11 @@ async function requestToken(
   return (await response.json()) as TokenResponse;
 }
 
-function tokenUrl(environment: CortiEnvironment): string {
-  return `https://auth.${environment}.corti.app/oauth2/token`;
+// Keycloak, realm-scoped per tenant. Not a guess: the path comes from the
+// server's own OIDC discovery document at
+//   https://auth.<env>.corti.app/realms/<tenant>/.well-known/openid-configuration
+// which names this exact token_endpoint. The unscoped /oauth2/token that used
+// to be here 404s with "Unable to find matching target resource method".
+function tokenUrl(environment: CortiEnvironment, tenantName: string): string {
+  return `https://auth.${environment}.corti.app/realms/${tenantName}/protocol/openid-connect/token`;
 }
