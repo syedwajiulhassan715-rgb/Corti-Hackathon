@@ -1,0 +1,27 @@
+{
+  "codes": [
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R07.89",
+      "display": "Other chest pain",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "I have a sharp pain here in my chest",
+          "start": 45,
+          "end": 81
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "R07.9",
+          "display": "Chest pain, unspecified"
+        }
+      ]
+    }
+  ],
+  "candidates": [],
+  "usageInfo": {
+    "creditsConsumed": 0.009032
+  }
+}

@@ -247,8 +247,52 @@ V1 RESOLVED  diarization on a genuine two-voice recording
         Anything keying on TOKS or NEWS by name will not find it in this transcript.
 V2  medical coding scope
     Which code systems return, does coding run on segments or on facts?
-    Result:
-    Decides whether matching happens pre- or post-coding.
+    Ran 2026-08-20 against the real endpoint, POST /v2/tools/coding/, system
+    icd10cm-outpatient, one utterance per request. Input was the cached
+    test_twovoice_01 transcript. Responses cached under fixtures/coding/.
+
+    ANSWER: coding runs on SEGMENTS. Send the utterance, not the fact.
+    The endpoint returns, per code, an evidence span with character offsets into
+    the text you sent. Send a fact label and those offsets point into our
+    paraphrase instead of into what the patient said, and the chain from audio to
+    code is broken. Send the segment and it stays intact.
+
+    It works on conversational speech. This was the open risk and it is closed.
+
+    Verbatim results:
+      "but but I'm puffing from just sitting here this be a blood clot"
+        -> R06.02  Shortness of breath   span 0-63
+        alternatives: R06.00, R06.01, R06.81, R06.89
+      "it started about 20 minutes ago and the pain is 9/10 and I cannot catc"
+        -> R06.02  Shortness of breath   span 24-105
+        alternatives: R06.00, R06.81, R07.89, R07.9, R52
+      "I have a sharp pain here in my chest"
+        -> R07.89  Other chest pain   span 45-81
+        alternatives: R07.9
+
+    THE SYNONYM RESULT, which is the one that matters:
+      "puffing from just sitting here"  -> R06.02 Shortness of breath
+      "I cannot catch my breath"        -> R06.02 Shortness of breath
+    Two phrasings, one patient, one recording, same code. CLINICAL §8 asks the
+    scripts to repeat a symptom in different words; this is what lets a rule see
+    that it was the same symptom. No synonym table needed, and none should be
+    written - a hand-rolled table is a classifier nobody validated.
+
+    Multi-concept utterances return multiple codes. The observation read-back
+      "oxygen saturation 87% ... respiration rate 30 pulse 180 ..."
+    returned 4 codes: R09.02 Hypoxemia; R06.82 Tachypnea, not elsewhere classified; R00.0 Tachycardia, unspecified; I95.9 Hypotension, unspecified
+    Event.code holds one string, so corti/coding keeps the full list in
+    SegmentCoding.all rather than discarding the rest. If a rule ever needs the
+    second code on an utterance, Event needs a code[] and that is a contract change.
+
+    Whole-transcript coding also works and returns 5 codes, including
+    J18.9, R07.9, R06.02. We do not use it: a code against the whole
+    conversation cannot say which utterance earned it, which is the one thing the
+    evidence line needs.
+
+    Credits: 0.0998 for all five calls.
+    Decides whether matching happens pre- or post-coding: PRE. Code the segment as
+    it is appended, then rules match on codes.
 
 V3  agentic framework and MCP
     Can the agent reach an external MCP endpoint, at what setup cost?

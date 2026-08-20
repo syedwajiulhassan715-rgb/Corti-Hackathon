@@ -1,0 +1,143 @@
+{
+  "codes": [
+    {
+      "system": "icd10cm-outpatient",
+      "code": "J18.9",
+      "display": "Pneumonia, unspecified organism",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "oh you have pneumonia coughing hurts that's hardly surprising",
+          "start": 182,
+          "end": 243
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "J18.8",
+          "display": "Other pneumonia, unspecified organism"
+        },
+        {
+          "code": "J98.4",
+          "display": "Other disorders of lung"
+        }
+      ]
+    },
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R07.9",
+      "display": "Chest pain, unspecified",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "I have a sharp pain here in my chest",
+          "start": 145,
+          "end": 181
+        },
+        {
+          "contextIndex": 0,
+          "text": "it started about 20 minutes ago and the pain is 9/10",
+          "start": 268,
+          "end": 320
+        },
+        {
+          "contextIndex": 0,
+          "text": "could this be a blood clot",
+          "start": 897,
+          "end": 923
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "I20.9",
+          "display": "Angina pectoris, unspecified"
+        },
+        {
+          "code": "R07.89",
+          "display": "Other chest pain"
+        }
+      ]
+    },
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R06.02",
+      "display": "Shortness of breath",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "I cannot catch my breath",
+          "start": 325,
+          "end": 349
+        },
+        {
+          "contextIndex": 0,
+          "text": "but I'm puffing from just sitting here",
+          "start": 444,
+          "end": 482
+        },
+        {
+          "contextIndex": 0,
+          "text": "please check who I cannot breathe",
+          "start": 631,
+          "end": 664
+        },
+        {
+          "contextIndex": 0,
+          "text": "your oxygen saturation is 87% despite 2 L of oxygen respiration rate 30",
+          "start": 774,
+          "end": 845
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "J80",
+          "display": "Acute respiratory distress syndrome"
+        },
+        {
+          "code": "R06.00",
+          "display": "Dyspnea, unspecified"
+        },
+        {
+          "code": "R06.03",
+          "display": "Acute respiratory distress"
+        },
+        {
+          "code": "R06.4",
+          "display": "Hyperventilation"
+        }
+      ]
+    },
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R09.02",
+      "display": "Hypoxemia",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "your oxygen saturation is 87% despite 2 L of oxygen",
+          "start": 774,
+          "end": 825
+        }
+      ],
+      "alternatives": []
+    },
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R42",
+      "display": "Dizziness and giddiness",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "I feel dizzy too",
+          "start": 757,
+          "end": 773
+        }
+      ],
+      "alternatives": []
+    }
+  ],
+  "candidates": [],
+  "usageInfo": {
+    "creditsConsumed": 0.03368
+  }
+}

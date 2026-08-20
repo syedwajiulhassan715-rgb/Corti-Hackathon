@@ -1,0 +1,87 @@
+{
+  "codes": [
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R09.02",
+      "display": "Hypoxemia",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "your oxygen saturation is 87% despite 2 L of oxygen",
+          "start": 0,
+          "end": 51
+        }
+      ],
+      "alternatives": []
+    },
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R06.82",
+      "display": "Tachypnea, not elsewhere classified",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "respiration rate 30",
+          "start": 52,
+          "end": 71
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "R06.4",
+          "display": "Hyperventilation"
+        }
+      ]
+    },
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R00.0",
+      "display": "Tachycardia, unspecified",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "pulse 180",
+          "start": 72,
+          "end": 81
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "I47.19",
+          "display": "Other supraventricular tachycardia"
+        }
+      ]
+    },
+    {
+      "system": "icd10cm-outpatient",
+      "code": "I95.9",
+      "display": "Hypotension, unspecified",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "blood pressure 90/80",
+          "start": 82,
+          "end": 102
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "I95.89",
+          "display": "Other hypotension"
+        },
+        {
+          "code": "T46.5X1",
+          "display": "Poisoning by other antihypertensive drugs, accidental (unintentional)"
+        },
+        {
+          "code": "T46.5X2",
+          "display": "Poisoning by other antihypertensive drugs, intentional self-harm"
+        }
+      ]
+    }
+  ],
+  "candidates": [],
+  "usageInfo": {
+    "creditsConsumed": 0.027176
+  }
+}
