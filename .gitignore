@@ -8,3 +8,6 @@ fixtures/audio/*.wav
 fixtures/provided/audio/*
 !fixtures/provided/audio/.gitkeep
 fixtures/audio/*.m4a
+
+# Stage runner output — regenerated from fixtures and the cache
+runs/
