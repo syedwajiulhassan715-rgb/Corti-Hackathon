@@ -30,6 +30,7 @@ import { codeText, type PredictedCode } from "./corti/coding.ts";
 import { transcribe, type CortiTranscript, type CortiEnvironment } from "./corti/transcribe.ts";
 import { EventLog } from "./log/store.ts";
 import { ground, type Candidate } from "./pipeline/grounding.ts";
+import { propose } from "./pipeline/observations.ts";
 import { assignRoles } from "./pipeline/roles.ts";
 import type { Event, EventId, Millis } from "./contracts/index.ts";
 
@@ -347,21 +348,15 @@ function stageGround(args: Args): number {
 
   heading("STAGE ground");
 
-  if (!existsSync(candidatesPath)) {
-    console.error(
-      `  No candidate facts at ${candidatesPath}.\n\n` +
-        `  ground() is a gate, not a producer: it takes Candidate[] from upstream and\n` +
-        `  keeps the ones a real utterance supports. The upstream producer is\n` +
-        `  src/corti/facts.ts, which is currently an empty file. Until something\n` +
-        `  proposes candidates there is nothing for the gate to reject, and this\n` +
-        `  runner will not invent any — a fabricated candidate would make the\n` +
-        `  rejection numbers meaningless.\n\n` +
-        `  Supply candidates with --candidates <path> to exercise the gate directly.`,
-    );
-    return 2;
-  }
+  // pipeline/observations proposes; --candidates overrides it, for exercising
+  // the gate against claims it was never going to accept.
+  const candidates =
+    existsSync(candidatesPath)
+      ? readJson<Candidate[]>(candidatesPath, "Candidate facts")
+      : propose(events);
 
-  const candidates = readJson<Candidate[]>(candidatesPath, "Candidate facts");
+  field("candidate source", existsSync(candidatesPath) ? candidatesPath : "pipeline/observations.propose()");
+
   const result = ground(candidates, events);
 
   field("candidates in", candidates.length);
