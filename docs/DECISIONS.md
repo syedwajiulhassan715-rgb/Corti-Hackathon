@@ -23,6 +23,23 @@ D9  world/ emits events only. feeds, roster and inventory append to the log; the
     Reason: a module holding its own state is a module nobody can replay. Appending the
     outcome as well as the call means a failed offer is visible, not silently absent.
 
+D10 Feed-only escalation is split at the emergency line. A structured reading may raise a
+    room to RED-EMERGENCY on the CLINICAL §2 numeric criteria alone — TOKS/NEWS >= 7, or
+    any single parameter scoring 3 — with no grounded utterance required. It may never
+    raise to YELLOW or RED-URGENT; those still need speech, and a reading only
+    corroborates or sharpens the band.
+    Reason: an emergency threshold is a threshold, not a judgement. Nobody is
+    interpreting anything when a number crosses 7, and the ward already alarms on it.
+    Staying green because no one happened to speak would not be principled restraint, it
+    would be a worse version of the monitor beeping in the corridor.
+    Below that line the judgement is the product. "Is this patient deteriorating in a way
+    that matters" is exactly the call we claim to make from what people say, so a feed
+    reading must not make it for us. This also keeps the demo unambiguous: below the
+    emergency line, a yellow always means somebody said something, and nobody can ask
+    whether the vitals would have done it anyway.
+    Replaces the single FEED_MAY_RAISE_ALONE switch, which forced one answer to two
+    different questions.
+
 ## Graveyard
 Vouch, medication reconciliation — killed on challenge fit.
 Third Voice, patient vs companion contradiction — killed on narrow scenario, weak crowd appeal.

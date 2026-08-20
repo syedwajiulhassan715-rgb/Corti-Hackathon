@@ -27,17 +27,9 @@
 //    What a human says is what raises a level. What a machine measures says
 //    how far. Those two jobs never swap.
 //
-// 3. ONLY GROUNDED FACTS MAY RAISE A LEVEL. Non-speech may corroborate but
-//    never raise alone (D2).
-//
-//    *** CONSEQUENCE THE CLINICIAN MUST CONFIRM ***
-//    Taken together, 1 and 3 mean a rising TOKS with nobody saying anything
-//    leaves the room GREEN. CLINICAL §2 lists "TOKS/NEWS >= 7" as a
-//    RED-EMERGENCY criterion in its own right, which reads the other way.
-//    FEED_MAY_RAISE_ALONE below is the switch. It is false because the
-//    instruction to this engine was explicit, and it is a named constant
-//    rather than an assumption buried in a conditional so that flipping it is
-//    a one-line decision the doctor can make.
+// 3. ONLY GROUNDED FACTS MAY RAISE A LEVEL, BELOW THE EMERGENCY LINE.
+//    Non-speech corroborates and does not conclude (D2) — except at the one
+//    threshold where no conclusion is being drawn. See FEED_ONLY and D10.
 
 import type { Speaker } from "../../contracts/index.ts";
 
@@ -48,12 +40,40 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
 /**
- * Whether a structured feed reading may raise a level with no speech at all.
- * See the consequence note above. Flipping this to true implements CLINICAL
- * §2 literally and breaks D2; leaving it false implements D2 and under-reads
- * a silent deterioration.
+ * What a structured reading may do on its own, with nobody speaking (D10).
+ *
+ * Two rules, because "can a machine reading move a room?" is two different
+ * questions with two different answers.
+ *
+ * ABOVE THE EMERGENCY LINE: yes. TOKS/NEWS >= 7, or any single parameter
+ * scoring 3, raises to red-emergency with no utterance required. An emergency
+ * threshold is a threshold, not a judgement — nobody is interpreting anything,
+ * a number crossed a line that the ward already alarms on. Staying silent
+ * because no one happened to speak would not be principled restraint, it would
+ * be a worse version of the monitor that is already beeping.
+ *
+ * BELOW IT: no. Yellow and red-urgent are judgements — "is this patient
+ * deteriorating in a way that matters?" — and that is exactly the call this
+ * product claims to make from what people say. A feed reading may corroborate
+ * such a judgement and may sharpen which band it lands in, but it may not make
+ * the judgement itself. The claim is about everything below the emergency
+ * line; above it, the claim was never ours to make.
+ *
+ * The split is also what keeps the demo honest. If feeds could raise to
+ * yellow, every yellow on stage would be ambiguous — did the speech do that,
+ * or would the vitals have done it anyway? Below the line, a yellow always
+ * means somebody said something.
  */
-export const FEED_MAY_RAISE_ALONE = false;
+export const FEED_ONLY = Object.freeze({
+  /** TOKS/NEWS >= 7 or a single parameter scoring 3, with no speech. */
+  mayRaiseToEmergency: true,
+  /** Yellow and red-urgent always need a grounded utterance. */
+  mayRaiseBelowEmergency: false,
+  emergencyCriteria: Object.freeze({
+    toksAtLeast: 7,
+    anyParameterScoring3: true,
+  }),
+});
 
 // ---------------------------------------------------------------- vocabulary
 

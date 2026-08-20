@@ -1,9 +1,10 @@
 // Tests for Patient State against CLINICAL.md §2. Written before the engine.
 //
-// Five properties carry the clinical safety of this engine:
+// Six properties carry the clinical safety of this engine:
 //   one speaker with a new symptom is enough for YELLOW
 //   a severe statement reaches RED without waiting for anyone
-//   a feed reading alone never raises a level
+//   a feed reading alone never raises to yellow or red-urgent
+//   a feed reading alone DOES reach red-emergency at the numeric line (D10)
 //   RED never steps straight to GREEN
 //   the same speaker repeating themselves is not a second source
 
@@ -13,6 +14,7 @@ import assert from "node:assert/strict";
 import { patientState } from "./patientState.ts";
 import {
   DEESCALATION,
+  FEED_ONLY,
   SIGNIFICANT_CHANGE,
   SPEECH,
   SPOKEN,
@@ -61,7 +63,7 @@ function reassessment(ts: number): Event {
 
 const ROOM = { room: "room-1" } as const;
 
-// ------------------------------------------------ speech raises, feeds do not
+// -------------------------- speech raises; feeds only at the emergency line
 
 test("one new symptom from one speaker is enough for YELLOW", () => {
   const s = symptom(T);
@@ -85,12 +87,61 @@ test("a lab value alone cannot raise a level", () => {
   assert.deepEqual(state.evidence, []);
 });
 
-test("a TOKS score alone cannot raise a level, however high", () => {
-  // The consequence of 'non-speech may corroborate but never raise alone'.
-  const state = patientState([toks(T, 9)], T + 1, ROOM);
+// ------------------------------- D10: the emergency line, and only that line
+
+test("TOKS 9 in silence reaches red-emergency", () => {
+  // An emergency threshold is a threshold, not a judgement.
+  const score = toks(T, 9);
+  const state = patientState([score], T + 1, ROOM);
+
+  assert.equal(state.level, "red-emergency");
+  assert.deepEqual(state.evidence, [score.id]);
+  assert.equal(state.changed_at, score.ts);
+  assert.equal(FEED_ONLY.mayRaiseToEmergency, true);
+});
+
+test("TOKS 4 in silence stays green", () => {
+  const state = patientState([toks(T, 4)], T + 1, ROOM);
+  assert.equal(state.level, "green", "yellow is a judgement and needs a grounded utterance");
+  assert.deepEqual(state.evidence, []);
+  assert.equal(FEED_ONLY.mayRaiseBelowEmergency, false);
+});
+
+test("TOKS 6 in silence stays green — red-urgent is still a judgement", () => {
+  const state = patientState([toks(T, 6)], T + 1, ROOM);
   assert.equal(state.level, "green");
-  assert.equal(state.toks_direction, "unknown", "one score gives no direction");
-  assert.match(state.reason_text, /no speech/i);
+});
+
+test("a symptom with TOKS 4 reaches yellow", () => {
+  const events = [toks(T, 4), symptom(T + MIN)];
+  const state = patientState(events, T + 2 * MIN, ROOM);
+
+  assert.equal(state.level, "yellow");
+  assert.ok(state.evidence.includes(events[1].id), "the utterance is what raised it");
+  assert.ok(state.evidence.includes(events[0].id), "the score is corroboration");
+});
+
+test("a single parameter scoring 3 in silence reaches red-emergency", () => {
+  const param = base({
+    ts: T, source: "vital", speaker: "unknown",
+    observation: OBSERVATION.parameterScore3, value: 3,
+  });
+  const state = patientState([param], T + 1, ROOM);
+
+  assert.equal(state.level, "red-emergency");
+  assert.deepEqual(state.evidence, [param.id]);
+});
+
+test("the emergency line is exactly 7 — 6 in silence is not an emergency", () => {
+  assert.equal(FEED_ONLY.emergencyCriteria.toksAtLeast, 7);
+  assert.equal(patientState([toks(T, 7)], T + 1, ROOM).level, "red-emergency");
+  assert.equal(patientState([toks(T, 6)], T + 1, ROOM).level, "green");
+});
+
+test("a feed emergency still explains itself", () => {
+  const state = patientState([toks(T, 9)], T + 1, ROOM);
+  assert.match(state.reason_text, /threshold/i);
+  assert.match(state.reason_text, /9/);
 });
 
 test("an unattributed utterance is not 'one speaker'", () => {

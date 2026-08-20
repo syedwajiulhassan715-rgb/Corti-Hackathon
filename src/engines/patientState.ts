@@ -6,9 +6,15 @@
 //
 // The division of labour, and the reason this engine is shaped the way it is:
 //
-//   SPEECH RAISES. A symptom, a concern or a severe statement is what moves a
-//   room off green. Only speech can do it (D2), and only attributed speech,
-//   except for severe statements where CLINICAL says not to wait.
+//   SPEECH RAISES, BELOW THE EMERGENCY LINE. A symptom, a concern or a severe
+//   statement is what moves a room to yellow or red-urgent. Only speech can do
+//   it (D2), and only attributed speech, except for severe statements where
+//   CLINICAL says not to wait.
+//
+//   A STRUCTURED READING RAISES ON ITS OWN, AT THE EMERGENCY LINE ONLY (D10).
+//   TOKS/NEWS >= 7 or a single parameter scoring 3 reaches red-emergency with
+//   nobody speaking. A threshold is not a judgement. Everything below that
+//   line still needs a human to have said something.
 //
 //   STRUCTURED READINGS SAY HOW FAR. Once speech has raised, the TOKS/NEWS
 //   band decides whether that is yellow, red-urgent or red-emergency. Scores
@@ -24,7 +30,7 @@
 import type { Event, EventId, Millis } from "../contracts/index.ts";
 import {
   DEESCALATION,
-  FEED_MAY_RAISE_ALONE,
+  FEED_ONLY,
   GREEN_RESPONSE,
   LEVELS,
   OBSERVATION,
@@ -155,6 +161,40 @@ function releasesRed(
   return { improvement: scores.latest, reassessment };
 }
 
+/**
+ * The reading that crosses the emergency line on its own, if there is one
+ * (D10). Only these two numeric criteria qualify; nothing below the line
+ * raises without speech.
+ */
+function feedEmergency(scores: Scores, visible: readonly Event[]): Event | undefined {
+  if (!FEED_ONLY.mayRaiseToEmergency) return undefined;
+
+  const { toksAtLeast, anyParameterScoring3 } = FEED_ONLY.emergencyCriteria;
+
+  if (scores.latest !== undefined && (scores.latest.value as number) >= toksAtLeast) {
+    return scores.latest;
+  }
+  if (anyParameterScoring3) {
+    const param = visible.find(
+      (e) => isFeed(e) && e.observation === OBSERVATION.parameterScore3,
+    );
+    if (param !== undefined) return param;
+  }
+  return undefined;
+}
+
+function feedEmergencyReason(trigger: Event): string {
+  const what =
+    trigger.observation === OBSERVATION.toks
+      ? `TOKS/NEWS ${trigger.value} is at or above the emergency threshold of ${FEED_ONLY.emergencyCriteria.toksAtLeast}`
+      : `A single parameter scored 3`;
+  return (
+    `${what} (structured reading, ts ${trigger.ts}), with no speech in this room. ` +
+    `An emergency threshold is a threshold, not a judgement, so this raises on the reading alone. ` +
+    `Below the emergency line a level still requires a grounded utterance.`
+  );
+}
+
 export function patientState(
   events: readonly Event[],
   now: Millis,
@@ -228,12 +268,13 @@ export function patientState(
         `Score moved at least ${SIGNIFICANT_CHANGE.points} points inside ${SIGNIFICANT_CHANGE.windowMs / 3_600_000} hours, which is significant.`,
       );
     }
-  } else if (FEED_MAY_RAISE_ALONE && bandLevel(scores) !== undefined) {
-    // Off by default. See the constraints block in patient.rules.ts.
-    level = bandLevel(scores)!;
-    trigger = scores.latest;
-    if (trigger !== undefined) evidence.push(trigger);
-    reason.push(`TOKS/NEWS ${scores.latest?.value} with no speech (FEED_MAY_RAISE_ALONE is on).`);
+  } else if (feedEmergency(scores, visible) !== undefined) {
+    // D10: above the emergency line a reading stands on its own. Below it,
+    // the next branch keeps the room green until somebody speaks.
+    trigger = feedEmergency(scores, visible);
+    level = "red-emergency";
+    evidence.push(trigger!);
+    reason.push(feedEmergencyReason(trigger!));
   } else {
     reason.push(greenReason(visible, speech, scores));
   }
