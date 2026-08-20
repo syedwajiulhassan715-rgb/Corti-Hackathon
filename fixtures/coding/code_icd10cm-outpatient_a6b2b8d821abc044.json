@@ -1,0 +1,87 @@
+{
+  "codes": [
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R09.02",
+      "display": "Hypoxemia",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "your oxygen saturation is 80 f 7% despite 2 L of oxygen respiratory rate 30 pulse 180 pulse pressure 80/58",
+          "start": 0,
+          "end": 106
+        }
+      ],
+      "alternatives": []
+    },
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R06.82",
+      "display": "Tachypnea, not elsewhere classified",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "your oxygen saturation is 80 f 7% despite 2 L of oxygen respiratory rate 30 pulse 180 pulse pressure 80/58",
+          "start": 0,
+          "end": 106
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "R06.4",
+          "display": "Hyperventilation"
+        }
+      ]
+    },
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R00.0",
+      "display": "Tachycardia, unspecified",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "your oxygen saturation is 80 f 7% despite 2 L of oxygen respiratory rate 30 pulse 180 pulse pressure 80/58",
+          "start": 0,
+          "end": 106
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "I47.19",
+          "display": "Other supraventricular tachycardia"
+        }
+      ]
+    },
+    {
+      "system": "icd10cm-outpatient",
+      "code": "I95.9",
+      "display": "Hypotension, unspecified",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "your oxygen saturation is 80 f 7% despite 2 L of oxygen respiratory rate 30 pulse 180 pulse pressure 80/58",
+          "start": 0,
+          "end": 106
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "I95.89",
+          "display": "Other hypotension"
+        },
+        {
+          "code": "T46.5X1",
+          "display": "Poisoning by other antihypertensive drugs, accidental (unintentional)"
+        },
+        {
+          "code": "T46.5X2",
+          "display": "Poisoning by other antihypertensive drugs, intentional self-harm"
+        }
+      ]
+    }
+  ],
+  "candidates": [],
+  "usageInfo": {
+    "creditsConsumed": 0.027895999999999997
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "codes": [
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R06.02",
+      "display": "Shortness of breath",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "but I'm puffing just from sitting here could this be a blood clot",
+          "start": 0,
+          "end": 65
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "R06.00",
+          "display": "Dyspnea, unspecified"
+        },
+        {
+          "code": "R06.01",
+          "display": "Orthopnea"
+        },
+        {
+          "code": "R06.81",
+          "display": "Apnea, not elsewhere classified"
+        },
+        {
+          "code": "R06.89",
+          "display": "Other abnormalities of breathing"
+        }
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "system": "icd10cm-outpatient",
+      "code": "I74.9",
+      "display": "Embolism and thrombosis of unspecified artery",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "but I'm puffing just from sitting here could this be a blood clot",
+          "start": 0,
+          "end": 65
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "R06.00",
+          "display": "Dyspnea, unspecified"
+        },
+        {
+          "code": "I26.99",
+          "display": "Other pulmonary embolism without acute cor pulmonale"
+        },
+        {
+          "code": "R06.02",
+          "display": "Shortness of breath"
+        },
+        {
+          "code": "R06.81",
+          "display": "Apnea, not elsewhere classified"
+        },
+        {
+          "code": "R06.01",
+          "display": "Orthopnea"
+        },
+        {
+          "code": "Z86.711",
+          "display": "Personal history of pulmonary embolism"
+        },
+        {
+          "code": "R06.89",
+          "display": "Other abnormalities of breathing"
+        },
+        {
+          "code": "R06.03",
+          "display": "Acute respiratory distress"
+        }
+      ]
+    }
+  ],
+  "usageInfo": {
+    "creditsConsumed": 0.02666
+  }
+}

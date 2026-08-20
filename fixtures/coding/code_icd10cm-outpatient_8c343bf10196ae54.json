@@ -1,0 +1,62 @@
+{
+  "codes": [
+    {
+      "system": "icd10cm-outpatient",
+      "code": "J18.9",
+      "display": "Pneumonia, unspecified organism",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "you have pneumonia coughing hurts that's hardly surprising",
+          "start": 0,
+          "end": 58
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "J18.8",
+          "display": "Other pneumonia, unspecified organism"
+        },
+        {
+          "code": "J98.4",
+          "display": "Other disorders of lung"
+        }
+      ]
+    },
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R05.9",
+      "display": "Cough, unspecified",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "you have pneumonia coughing hurts that's hardly surprising",
+          "start": 0,
+          "end": 58
+        }
+      ],
+      "alternatives": [
+        {
+          "code": "F45.8",
+          "display": "Other somatoform disorders"
+        },
+        {
+          "code": "R05.1",
+          "display": "Acute cough"
+        },
+        {
+          "code": "R05.3",
+          "display": "Chronic cough"
+        },
+        {
+          "code": "R05.8",
+          "display": "Other specified cough"
+        }
+      ]
+    }
+  ],
+  "candidates": [],
+  "usageInfo": {
+    "creditsConsumed": 0.0157
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "codes": [
+    {
+      "system": "icd10cm-outpatient",
+      "code": "R42",
+      "display": "Dizziness and giddiness",
+      "evidences": [
+        {
+          "contextIndex": 0,
+          "text": "it's getting harder again and I feel dizzy too",
+          "start": 0,
+          "end": 46
+        }
+      ],
+      "alternatives": []
+    }
+  ],
+  "candidates": [],
+  "usageInfo": {
+    "creditsConsumed": 0.008732
+  }
+}

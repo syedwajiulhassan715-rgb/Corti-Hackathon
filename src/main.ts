@@ -435,7 +435,7 @@ async function stageCode(args: Args): Promise<number> {
 
   heading("Codes by utterance");
   for (const event of speech) {
-    const response = await codeText(event.quote, { cache, credentials });
+    const response = await codeText(event.quote, { cache, credentials, fetch: counter.fetch });
     const codes = response.codes;
 
     console.log(`\n  ${event.id}  ${event.speaker}  @${event.ts}\n      "${event.quote}"`);
