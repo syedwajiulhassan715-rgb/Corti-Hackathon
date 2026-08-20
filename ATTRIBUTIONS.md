@@ -8,7 +8,12 @@ generation, agentic framework.
 TTS: <model> — used only to synthesise fixture audio for the demo. No clinical role.
 
 ## Datasets
-<name, source, licence, what it was used for>
+Corti Hackathon provided fixtures (2026-08-20): 24 audio clips (~66 min) and 11
+synthetic patient records (113 Markdown files). Supplied by the organisers,
+hackathon-use terms, redistribution unconfirmed. Full per-file inventory and
+provenance: `fixtures/provided/SOURCE.md`.
+
+<any further dataset: name, source, licence, what it was used for>
 
 ## Open source
 <package, licence> — list on Friday morning from package.json

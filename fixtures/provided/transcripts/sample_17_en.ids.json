@@ -1,0 +1,12 @@
+{
+  "file": "fixtures/provided/audio/sample_17_en.wav",
+  "interactionId": "f8d35dec-66ea-46e2-998b-2a03d23841c9",
+  "recordingId": "bb672683-abf1-4dee-bdf4-e8624c740433",
+  "transcriptId": "54216345-2485-4633-b507-a811a518170e",
+  "request": {
+    "primaryLanguage": "en",
+    "diarize": true
+  },
+  "endpoint": "POST https://api.eu.corti.app/v2/interactions/{id}/transcripts/",
+  "ranAt": "2026-08-20"
+}
