@@ -1,0 +1,149 @@
+{
+  "id": "ac7b0429-0e40-43c7-9249-d7e9ddeb35a4",
+  "metadata": {
+    "participantsRoles": null
+  },
+  "transcripts": [
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "So good morning Anna Jensen in room one oh one I'm the doctor the chart says that you had a quiet night your CHOX was one and you're doing fine",
+      "start": 1056,
+      "end": 12355
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "I was fine earlier but something has changed I have a sharp pain here in my chest",
+      "start": 12676,
+      "end": 17957
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "you have pneumonia coughing hurts that's hardly surprising",
+      "start": 18270,
+      "end": 23879
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "no this is different I started it started about 20 minutes ago the pain is 9/10 and I cannot catch my breath",
+      "start": 24348,
+      "end": 31903
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "but and yesterday you said your pain was only 1/10",
+      "start": 32223,
+      "end": 35903
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "that was yesterday now it's nine and I'm getting worse",
+      "start": 36305,
+      "end": 39341
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "you're th talking to me and you're getting air it can't be that bad",
+      "start": 39825,
+      "end": 44302
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "but I'm puffing just from sitting here could this be a blood clot",
+      "start": 44544,
+      "end": 49661
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "let's not diagnose ourselves I can offer you some pain medication",
+      "start": 50458,
+      "end": 55505
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "no thank you I don't want you to just cover the pain please check if I wh why I c cannot I breathe",
+      "start": 55817,
+      "end": 62958
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "fine let's take a look on the new observations",
+      "start": 63279,
+      "end": 66322
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "it's getting harder again and I feel dizzy too",
+      "start": 66962,
+      "end": 69603
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "your oxygen saturation is 80 f 7% despite 2 L of oxygen respiratory rate 30 pulse 180 pulse pressure 80/58",
+      "start": 70079,
+      "end": 82954
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "I don't understand those numbers is that bad could that be a blood clot oh",
+      "start": 83282,
+      "end": 87856
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "it means your new TOX value is seven so you have changed significantly no I know I heard you I'm calling the acute team try sitting up right mm that might help",
+      "start": 87936,
+      "end": 100495
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "please call my daughter as well",
+      "start": 100893,
+      "end": 102417
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "we'll deal with that immediate problem first we need urgent clinical assistance in room one-oh-one now",
+      "start": 102737,
+      "end": 108651
+    }
+  ],
+  "usageInfo": {
+    "creditsConsumed": 0.011895000000000001
+  },
+  "recordingId": "9a213338-9d57-4520-897a-ef1d663b2bcc",
+  "status": "completed"
+}
