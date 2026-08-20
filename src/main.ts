@@ -37,6 +37,8 @@ import type { Event, EventId, Millis } from "./contracts/index.ts";
 const RUNS = "runs";
 const TRANSCRIPT_CACHE = "fixtures/transcripts";
 const CODING_CACHE = "fixtures/coding";
+/** corti/transcribe stamps this on every raw utterance. Anything else is derived. */
+const OBSERVATION_UTTERANCE = "utterance";
 
 // ---------------------------------------------------------------- arguments
 
@@ -348,16 +350,24 @@ function stageGround(args: Args): number {
 
   heading("STAGE ground");
 
+  // Propose and gate from the raw utterances only.
+  //
+  // Derived rows carry the quote and the code of the utterance they came
+  // from, so feeding them back to the proposer would let every run re-propose
+  // from its own output and the log would grow on each pass. The raw
+  // utterances are the input to this stage; the derived rows are its output.
+  const utterances = events.filter((e) => e.observation === OBSERVATION_UTTERANCE);
+
   // pipeline/observations proposes; --candidates overrides it, for exercising
   // the gate against claims it was never going to accept.
   const candidates =
     existsSync(candidatesPath)
       ? readJson<Candidate[]>(candidatesPath, "Candidate facts")
-      : propose(events);
+      : propose(utterances);
 
   field("candidate source", existsSync(candidatesPath) ? candidatesPath : "pipeline/observations.propose()");
 
-  const result = ground(candidates, events);
+  const result = ground(candidates, utterances);
 
   field("candidates in", candidates.length);
   field("grounded", result.grounded.length);
@@ -378,6 +388,45 @@ function stageGround(args: Args): number {
 
   writeJson(join(runDir(run), "grounding.json"), result);
   console.log(`\n  wrote ${join(runDir(run), "grounding.json")}`);
+
+  // Append the surviving facts to the log as events.
+  //
+  // This is the step that makes them real. engines/patientState reads Events
+  // whose observation is one of the clinical names — it has never heard of a
+  // GroundedFact — and the event log is the only interface between modules
+  // (D5). A fact that stays in grounding.json is a fact no engine can see.
+  //
+  // Each derived event carries the quote, speaker and timestamp of the
+  // utterance it came from, so the product law holds on the derived row too:
+  // nothing enters state without a quote, a speaker and a time. The quote is
+  // copied from the event, never from the candidate.
+  //
+  // Re-runnable: derived rows are dropped and rebuilt, so grounding twice
+  // produces the same log rather than two copies of every fact.
+  const rebuilt = new EventLog();
+  for (const event of utterances) rebuilt.append(event);
+
+  const originById = new Map(utterances.map((e) => [e.id, e]));
+  for (const fact of result.grounded) {
+    const origin = originById.get(fact.eventId);
+    rebuilt.append({
+      ts: fact.ts,
+      room: fact.room,
+      source: "speech",
+      speaker: fact.speaker,
+      quote: fact.quote,
+      code: origin?.code ?? null,
+      observation: fact.observation,
+      value: fact.value,
+    });
+  }
+
+  EventLog.write(eventsPath(run), rebuilt.all());
+  heading("Appended to the log");
+  field("utterance events", utterances.length);
+  field("derived fact events", result.grounded.length);
+  field("log size", rebuilt.size);
+
   return 0;
 }
 

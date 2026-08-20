@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECHO — room-02</title>
+<style>
+  :root {
+    --bg: #0c0f14; --panel: #141922; --line: #232a36; --ink: #e7edf5;
+    --dim: #8b97a8; --faint: #5b6675;
+    --green: #3fb950; --yellow: #d29922; --urgent: #f0883e; --emergency: #f85149;
+    --patient: #58a6ff; --clinician: #bc8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    padding: 18px 24px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    position: sticky; top: 0; background: var(--bg); z-index: 5;
+  }
+  h1 { font-size: 17px; margin: 0; letter-spacing: .06em; text-transform: uppercase; }
+  h1 span { color: var(--faint); font-weight: 400; }
+  .badge {
+    font-size: 13px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+    padding: 7px 14px; border-radius: 999px; border: 1px solid;
+  }
+  .green    { color: var(--green);     border-color: var(--green);     background: #3fb95018; }
+  .yellow   { color: var(--yellow);    border-color: var(--yellow);    background: #d2992218; }
+  .urgent   { color: var(--urgent);    border-color: var(--urgent);    background: #f0883e18; }
+  .emergency{ color: var(--emergency); border-color: var(--emergency); background: #f8514922; }
+  .scrub { flex: 1 1 320px; display: flex; align-items: center; gap: 12px; min-width: 260px; }
+  .scrub input { flex: 1; accent-color: var(--patient); }
+  .clock { font-variant-numeric: tabular-nums; color: var(--dim); font-size: 13px; white-space: nowrap; }
+  main { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(0,1fr); gap: 20px; padding: 20px 24px 60px; }
+  @media (max-width: 940px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  section > h2 {
+    margin: 0; padding: 12px 16px; font-size: 11px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; gap: 10px;
+  }
+  section > h2 em { font-style: normal; color: var(--faint); text-transform: none; letter-spacing: 0; }
+  .body { padding: 8px 0; max-height: 62vh; overflow-y: auto; }
+  .turn { padding: 9px 16px; border-left: 3px solid transparent; }
+  .turn.future { opacity: .22; }
+  .turn.trigger { background: #f8514914; border-left-color: var(--emergency); }
+  .who { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; display: flex; gap: 8px; align-items: baseline; }
+  .who .t { color: var(--faint); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+  .p-patient { color: var(--patient); }
+  .p-clinician { color: var(--clinician); }
+  .p-unknown { color: var(--faint); }
+  .quote { margin-top: 2px; }
+  .chips { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 11px; padding: 2px 8px; border-radius: 5px;
+    border: 1px solid var(--line); color: var(--dim); background: #0c0f14;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip.code { color: #7ee787; border-color: #7ee78740; }
+  .chip.fact { color: var(--urgent); border-color: #f0883e40; }
+  .row { padding: 11px 16px; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row .k { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+  .reason { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .ev { padding: 11px 16px; border-bottom: 1px solid var(--line); }
+  .ev:last-child { border-bottom: 0; }
+  .ev .id { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .stages { display: flex; flex-wrap: wrap; gap: 0; padding: 0; }
+  .stage { flex: 1 1 90px; padding: 12px 10px; text-align: center; border-right: 1px solid var(--line); }
+  .stage:last-child { border-right: 0; }
+  .stage b { display: block; font-size: 21px; font-variant-numeric: tabular-nums; }
+  .stage span { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+  .muted { color: var(--dim); padding: 14px 16px; }
+  .err { color: var(--emergency); padding: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ECHO <span>/ room-02</span></h1>
+  <div id="badge" class="badge green">—</div>
+  <div class="scrub">
+    <input id="scrub" type="range" min="0" max="100" value="100" step="1">
+    <div class="clock" id="clock">—</div>
+  </div>
+</header>
+
+<main>
+  <section>
+    <h2>What was said <em id="heard"></em></h2>
+    <div class="body" id="turns"><div class="muted">Loading…</div></div>
+  </section>
+
+  <div>
+    <section style="margin-bottom:20px">
+      <h2>Pipeline at this moment</h2>
+      <div class="stages" id="stages"></div>
+    </section>
+
+    <section>
+      <h2>Patient State <em id="changed"></em></h2>
+      <div id="card"><div class="muted">Loading…</div></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const LEVEL_CLASS = {
+  "green": "green", "yellow": "yellow",
+  "red-urgent": "urgent", "red-emergency": "emergency",
+};
+const FACTS = ["symptom", "hcp_concern", "severe_statement", "emergency_request"];
+
+let EVENTS = [];
+let UTTERANCES = [];
+let TMIN = 0, TMAX = 0;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const hhmmss = (ts) => new Date(ts).toISOString().slice(11, 19);
+
+async function boot() {
+  try {
+    const log = await (await fetch("/log")).json();
+    EVENTS = log.events;
+    UTTERANCES = EVENTS.filter((e) => e.observation === "utterance");
+    if (UTTERANCES.length === 0) throw new Error("no utterances in the log");
+    TMIN = Math.min(...EVENTS.map((e) => e.ts));
+    TMAX = Math.max(...EVENTS.map((e) => e.ts));
+    $("scrub").addEventListener("input", () => render(untilFromScrub()));
+    await render(TMAX);
+  } catch (e) {
+    document.querySelector("main").innerHTML =
+      '<div class="err">Could not load the log: ' + esc(e.message) +
+      '<br><br>Start the server with <code>npm run demo</code>.</div>';
+  }
+}
+
+function untilFromScrub() {
+  const pct = Number($("scrub").value) / 100;
+  return Math.round(TMIN + (TMAX - TMIN) * pct);
+}
+
+async function render(until) {
+  $("clock").textContent = hhmmss(until) + "  ·  +" + ((until - TMIN) / 1000).toFixed(1) + "s";
+
+  const ward = await (await fetch("/ward?until=" + until)).json();
+  const card = ward.rooms.find((r) => r.room === "room-02");
+
+  // The trigger is whichever event the state cites first — that is the one
+  // utterance that moved the room, so it gets highlighted in the transcript.
+  const evidenceIds = new Set((card ? card.patient.evidence : []).map((e) => e.id));
+  const triggerQuotes = new Set(
+    EVENTS.filter((e) => evidenceIds.has(e.id)).map((e) => e.quote)
+  );
+
+  renderTurns(until, triggerQuotes);
+  renderStages(until);
+  renderCard(card, until);
+}
+
+function renderTurns(until, triggerQuotes) {
+  const rows = UTTERANCES.map((u) => {
+    const future = u.ts > until;
+    const derived = EVENTS.filter(
+      (e) => e.quote === u.quote && FACTS.includes(e.observation) && e.ts <= until
+    );
+    const isTrigger = !future && triggerQuotes.has(u.quote);
+
+    const chips = [];
+    if (u.code) chips.push('<span class="chip code">' + esc(u.code) + "</span>");
+    for (const d of derived) chips.push('<span class="chip fact">' + esc(d.observation) + "</span>");
+
+    return (
+      '<div class="turn' + (future ? " future" : "") + (isTrigger ? " trigger" : "") + '">' +
+        '<div class="who"><span class="p-' + esc(u.speaker) + '">' + esc(u.speaker) + "</span>" +
+          '<span class="t">' + hhmmss(u.ts) + "</span></div>" +
+        '<div class="quote">' + esc(u.quote) + "</div>" +
+        (chips.length ? '<div class="chips">' + chips.join("") + "</div>" : "") +
+      "</div>"
+    );
+  });
+  $("turns").innerHTML = rows.join("");
+  const heard = UTTERANCES.filter((u) => u.ts <= until).length;
+  $("heard").textContent = heard + " of " + UTTERANCES.length + " utterances";
+}
+
+function renderStages(until) {
+  const seen = EVENTS.filter((e) => e.ts <= until);
+  const utt = seen.filter((e) => e.observation === "utterance");
+  const stages = [
+    ["Utterances", utt.length],
+    ["Roles", new Set(utt.filter((e) => e.speaker !== "unknown").map((e) => e.speaker)).size],
+    ["Coded", utt.filter((e) => e.code).length],
+    ["Facts", seen.filter((e) => FACTS.includes(e.observation)).length],
+  ];
+  $("stages").innerHTML = stages
+    .map(([label, n]) => '<div class="stage"><b>' + n + "</b><span>" + label + "</span></div>")
+    .join("");
+}
+
+function renderCard(card, until) {
+  if (!card) {
+    $("card").innerHTML = '<div class="muted">No card for room-02 at this moment.</div>';
+    $("badge").className = "badge green";
+    $("badge").textContent = "—";
+    return;
+  }
+  const p = card.patient;
+  $("badge").className = "badge " + (LEVEL_CLASS[p.level] || "green");
+  $("badge").textContent = p.level.replace("-", " ");
+  $("changed").textContent =
+    p.level === p.previous_level ? "" : "was " + p.previous_level;
+
+  const evidence = p.evidence.length
+    ? p.evidence
+        .map(
+          (e) =>
+            '<div class="ev"><div class="id">' + esc(e.id) + "  ·  " +
+            esc(e.speaker) + "  ·  " + hhmmss(e.ts) + "</div>" +
+            "<div>" + esc(e.quote) + "</div></div>"
+        )
+        .join("")
+    : '<div class="muted">No evidence cited.</div>';
+
+  $("card").innerHTML =
+    '<div class="reason">' + esc(p.reason_text) + "</div>" +
+    '<div class="row"><div class="k">Response</div>' + esc(p.response.text) + "</div>" +
+    '<div class="row"><div class="k">Corroborated by two speakers</div>' +
+      (p.corroborated ? "yes" : "no") + "</div>" +
+    '<div class="row"><div class="k">Evidence — every level traces to a quote</div></div>' +
+    evidence;
+}
+
+boot();
+</script>
+</body>
+</html>

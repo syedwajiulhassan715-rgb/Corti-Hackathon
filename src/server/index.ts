@@ -9,7 +9,7 @@
 // Nothing here computes anything. It parses a query parameter, calls the
 // projection, and serialises the result.
 
-import { createServer as createHttpServer, type Server } from "node:http";
+import { createServer as createHttpServer, type Server, type ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 
 import type { Event, Millis } from "../contracts/index.ts";
@@ -70,6 +70,17 @@ export function createServer(options: ServerOptions): Server {
       return send(response, 405, { error: "Only GET is supported." });
     }
 
+    // The demo surface. One page, served from disk so it cannot drift from
+    // the log it is describing, and /log so it can show the pipeline itself
+    // rather than only the card the pipeline produced.
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      return sendHtml(response, readFileSync("web/index.html", "utf8"));
+    }
+
+    if (url.pathname === "/log") {
+      return send(response, 200, { events: options.events });
+    }
+
     if (url.pathname === "/health") {
       return send(response, 200, { ok: true, events: options.events.length });
     }
@@ -91,7 +102,7 @@ export function createServer(options: ServerOptions): Server {
   });
 }
 
-function send(response: Parameters<Parameters<typeof createHttpServer>[0]>[1], status: number, body: unknown): void {
+function send(response: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body, null, 2);
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -101,6 +112,15 @@ function send(response: Parameters<Parameters<typeof createHttpServer>[0]>[1], s
     "Cache-Control": "no-store",
   });
   response.end(payload);
+}
+
+function sendHtml(response: ServerResponse, body: string): void {
+  response.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": Buffer.byteLength(body),
+    "Cache-Control": "no-store",
+  });
+  response.end(body);
 }
 
 /** Read a JSONL event log from disk. One event per line. */

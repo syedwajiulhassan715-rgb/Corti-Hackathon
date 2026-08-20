@@ -40,7 +40,7 @@ test("the observation names still match the doctor's rules file", () => {
     ...CODE_OBSERVATIONS.map((c) => c.observation),
     ...PHRASE_OBSERVATIONS.map((p) => p.observation),
   ]);
-  const known = new Set(Object.values(SPEECH));
+  const known: ReadonlySet<string> = new Set<string>(Object.values(SPEECH));
 
   for (const name of proposed) {
     assert.ok(
