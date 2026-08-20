@@ -98,7 +98,7 @@ test("one room's evidence never appears on another room's card", () => {
 
   const cardA = cards.find((c) => c.room === a)!;
   const cardB = cards.find((c) => c.room === b)!;
-  assert.deepEqual(cardA.patient.evidence, [loud.id]);
+  assert.deepEqual(cardA.patient.evidence.map((e) => e.id), [loud.id]);
   assert.deepEqual(cardB.patient.evidence, []);
 });
 
@@ -159,7 +159,7 @@ test("a card carries room, patient state, coordination and previous_level", () =
   assert.equal(card.kind, "interactive");
   assert.equal(card.patient.level, "yellow");
   assert.ok(card.patient.reason_text.includes("symptom") || card.patient.reason_text.length > 0);
-  assert.deepEqual(card.patient.evidence, [s.id]);
+  assert.deepEqual(card.patient.evidence.map((e) => e.id), [s.id]);
   assert.equal(card.previous_level, "green");
   assert.equal(card.patient.previous_level, card.previous_level);
 });

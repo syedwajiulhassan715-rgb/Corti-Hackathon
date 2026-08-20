@@ -1,0 +1,328 @@
+{
+  "until": 1787217300000,
+  "replayed": true,
+  "generated_from_events": 14,
+  "rooms": [
+    {
+      "room": "room-01",
+      "kind": "interactive",
+      "patient": {
+        "level": "red-emergency",
+        "reason_text": "Severe statement at ts 1787215800000 from the patient: \"no no no it's different it started about 20 minutes ago and the pain is 9/10 and I cannot catch my breath\". Immediate verification. Not waiting for a second speaker.",
+        "evidence": [
+          {
+            "id": "e_000009",
+            "quote": "no no no it's different it started about 20 minutes ago and the pain is 9/10 and I cannot catch my breath",
+            "speaker": "patient",
+            "ts": 1787215800000
+          }
+        ],
+        "previous_level": "green",
+        "changed_at": 1787215800000,
+        "toks_direction": "worsening",
+        "significant_change": true,
+        "corroborated": false,
+        "response": {
+          "notifyWithinMs": 0,
+          "reassessWithinMs": 0,
+          "observationIntervalMs": 0,
+          "text": "Immediate emergency response. Continuous monitoring according to local protocol."
+        }
+      },
+      "coordination": {
+        "room": "room-01",
+        "level": "green",
+        "reason_text": "Coordination State is not implemented yet — this is a placeholder, not a green light.",
+        "blocked_task_ids": [],
+        "evidence": [],
+        "changed_at": 0,
+        "placeholder": true
+      },
+      "previous_level": "green"
+    },
+    {
+      "room": "room-02",
+      "kind": "interactive",
+      "patient": {
+        "level": "green",
+        "reason_text": "2 structured readings and no speech. Readings corroborate, they never conclude. Latest structured TOKS/NEWS is 1.",
+        "evidence": [],
+        "previous_level": "green",
+        "changed_at": 0,
+        "toks_direction": "improving",
+        "significant_change": false,
+        "corroborated": false,
+        "response": {
+          "notifyWithinMs": 0,
+          "reassessWithinMs": 14400000,
+          "reviewWithinMs": 21600000,
+          "text": "TOKS/NEWS 1-2: reassessment within 4-6 hours."
+        }
+      },
+      "coordination": {
+        "room": "room-02",
+        "level": "green",
+        "reason_text": "Coordination State is not implemented yet — this is a placeholder, not a green light.",
+        "blocked_task_ids": [],
+        "evidence": [],
+        "changed_at": 0,
+        "placeholder": true
+      },
+      "previous_level": "green"
+    },
+    {
+      "room": "room-03",
+      "kind": "interactive",
+      "patient": {
+        "level": "yellow",
+        "reason_text": "New symptom or concern reported by the patient at ts 1787214000000: \"but but I'm puffing from just sitting here\". One speaker is sufficient for YELLOW. TOKS/NEWS 3 (structured, ts 1787214300000) puts this in the YELLOW band. Corroborated: 2 different speakers.",
+        "evidence": [
+          {
+            "id": "e_000004",
+            "quote": "but but I'm puffing from just sitting here",
+            "speaker": "patient",
+            "ts": 1787214000000
+          },
+          {
+            "id": "e_000013",
+            "quote": "I have chased the chest film twice, it is still not booked",
+            "speaker": "nurse",
+            "ts": 1787217000000
+          },
+          {
+            "id": "e_000005",
+            "quote": "",
+            "speaker": "unknown",
+            "ts": 1787214300000
+          }
+        ],
+        "previous_level": "green",
+        "changed_at": 1787214000000,
+        "toks_direction": "unknown",
+        "significant_change": false,
+        "corroborated": true,
+        "response": {
+          "notifyWithinMs": 900000,
+          "reassessWithinMs": 3600000,
+          "text": "Responsible nurse informed within 15 minutes. Clinical reassessment and repeat observations within 60 minutes."
+        }
+      },
+      "coordination": {
+        "room": "room-03",
+        "level": "green",
+        "reason_text": "Coordination State is not implemented yet — this is a placeholder, not a green light.",
+        "blocked_task_ids": [],
+        "evidence": [],
+        "changed_at": 0,
+        "placeholder": true
+      },
+      "previous_level": "green"
+    },
+    {
+      "room": "room-04",
+      "kind": "background",
+      "patient": {
+        "level": "green",
+        "reason_text": "1 structured reading and no speech. Readings corroborate, they never conclude. Latest structured TOKS/NEWS is 1.",
+        "evidence": [],
+        "previous_level": "green",
+        "changed_at": 0,
+        "toks_direction": "unknown",
+        "significant_change": false,
+        "corroborated": false,
+        "response": {
+          "notifyWithinMs": 0,
+          "reassessWithinMs": 14400000,
+          "reviewWithinMs": 21600000,
+          "text": "TOKS/NEWS 1-2: reassessment within 4-6 hours."
+        }
+      },
+      "coordination": {
+        "room": "room-04",
+        "level": "green",
+        "reason_text": "Coordination State is not implemented yet — this is a placeholder, not a green light.",
+        "blocked_task_ids": [],
+        "evidence": [],
+        "changed_at": 0,
+        "placeholder": true
+      },
+      "previous_level": "green"
+    },
+    {
+      "room": "room-05",
+      "kind": "background",
+      "patient": {
+        "level": "green",
+        "reason_text": "1 structured reading and no speech. Readings corroborate, they never conclude.",
+        "evidence": [],
+        "previous_level": "green",
+        "changed_at": 0,
+        "toks_direction": "unknown",
+        "significant_change": false,
+        "corroborated": false,
+        "response": {
+          "notifyWithinMs": 0,
+          "reassessWithinMs": 43200000,
+          "text": "TOKS/NEWS 0: reassessment within 12 hours."
+        }
+      },
+      "coordination": {
+        "room": "room-05",
+        "level": "green",
+        "reason_text": "Coordination State is not implemented yet — this is a placeholder, not a green light.",
+        "blocked_task_ids": [],
+        "evidence": [],
+        "changed_at": 0,
+        "placeholder": true
+      },
+      "previous_level": "green"
+    },
+    {
+      "room": "room-06",
+      "kind": "background",
+      "patient": {
+        "level": "green",
+        "reason_text": "No events in this room.",
+        "evidence": [],
+        "previous_level": "green",
+        "changed_at": 0,
+        "toks_direction": "unknown",
+        "significant_change": false,
+        "corroborated": false,
+        "response": {
+          "notifyWithinMs": 0,
+          "reassessWithinMs": 43200000,
+          "text": "TOKS/NEWS 0: reassessment within 12 hours."
+        }
+      },
+      "coordination": {
+        "room": "room-06",
+        "level": "green",
+        "reason_text": "Coordination State is not implemented yet — this is a placeholder, not a green light.",
+        "blocked_task_ids": [],
+        "evidence": [],
+        "changed_at": 0,
+        "placeholder": true
+      },
+      "previous_level": "green"
+    },
+    {
+      "room": "room-07",
+      "kind": "background",
+      "patient": {
+        "level": "green",
+        "reason_text": "1 structured reading and no speech. Readings corroborate, they never conclude. Latest structured TOKS/NEWS is 0.",
+        "evidence": [],
+        "previous_level": "green",
+        "changed_at": 0,
+        "toks_direction": "unknown",
+        "significant_change": false,
+        "corroborated": false,
+        "response": {
+          "notifyWithinMs": 0,
+          "reassessWithinMs": 43200000,
+          "text": "TOKS/NEWS 0: reassessment within 12 hours."
+        }
+      },
+      "coordination": {
+        "room": "room-07",
+        "level": "green",
+        "reason_text": "Coordination State is not implemented yet — this is a placeholder, not a green light.",
+        "blocked_task_ids": [],
+        "evidence": [],
+        "changed_at": 0,
+        "placeholder": true
+      },
+      "previous_level": "green"
+    },
+    {
+      "room": "room-08",
+      "kind": "background",
+      "patient": {
+        "level": "green",
+        "reason_text": "No events in this room.",
+        "evidence": [],
+        "previous_level": "green",
+        "changed_at": 0,
+        "toks_direction": "unknown",
+        "significant_change": false,
+        "corroborated": false,
+        "response": {
+          "notifyWithinMs": 0,
+          "reassessWithinMs": 43200000,
+          "text": "TOKS/NEWS 0: reassessment within 12 hours."
+        }
+      },
+      "coordination": {
+        "room": "room-08",
+        "level": "green",
+        "reason_text": "Coordination State is not implemented yet — this is a placeholder, not a green light.",
+        "blocked_task_ids": [],
+        "evidence": [],
+        "changed_at": 0,
+        "placeholder": true
+      },
+      "previous_level": "green"
+    },
+    {
+      "room": "room-09",
+      "kind": "background",
+      "patient": {
+        "level": "green",
+        "reason_text": "1 structured reading and no speech. Readings corroborate, they never conclude. Latest structured TOKS/NEWS is 2.",
+        "evidence": [],
+        "previous_level": "green",
+        "changed_at": 0,
+        "toks_direction": "unknown",
+        "significant_change": false,
+        "corroborated": false,
+        "response": {
+          "notifyWithinMs": 0,
+          "reassessWithinMs": 14400000,
+          "reviewWithinMs": 21600000,
+          "text": "TOKS/NEWS 1-2: reassessment within 4-6 hours."
+        }
+      },
+      "coordination": {
+        "room": "room-09",
+        "level": "green",
+        "reason_text": "Coordination State is not implemented yet — this is a placeholder, not a green light.",
+        "blocked_task_ids": [],
+        "evidence": [],
+        "changed_at": 0,
+        "placeholder": true
+      },
+      "previous_level": "green"
+    },
+    {
+      "room": "room-10",
+      "kind": "background",
+      "patient": {
+        "level": "green",
+        "reason_text": "1 structured reading and no speech. Readings corroborate, they never conclude. Latest structured TOKS/NEWS is 1.",
+        "evidence": [],
+        "previous_level": "green",
+        "changed_at": 0,
+        "toks_direction": "unknown",
+        "significant_change": false,
+        "corroborated": false,
+        "response": {
+          "notifyWithinMs": 0,
+          "reassessWithinMs": 14400000,
+          "reviewWithinMs": 21600000,
+          "text": "TOKS/NEWS 1-2: reassessment within 4-6 hours."
+        }
+      },
+      "coordination": {
+        "room": "room-10",
+        "level": "green",
+        "reason_text": "Coordination State is not implemented yet — this is a placeholder, not a green light.",
+        "blocked_task_ids": [],
+        "evidence": [],
+        "changed_at": 0,
+        "placeholder": true
+      },
+      "previous_level": "green"
+    }
+  ]
+}

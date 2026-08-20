@@ -1,0 +1,14 @@
+{"id":"e_000001","ts":1787212800000,"room":"room-02","source":"vital","speaker":"unknown","quote":"","code":null,"observation":"toks","value":2}
+{"id":"e_000002","ts":1787213400000,"room":"room-04","source":"vital","speaker":"unknown","quote":"","code":null,"observation":"toks","value":1}
+{"id":"e_000003","ts":1787213700000,"room":"room-07","source":"vital","speaker":"unknown","quote":"","code":null,"observation":"toks","value":0}
+{"id":"e_000004","ts":1787214000000,"room":"room-03","source":"speech","speaker":"patient","quote":"but but I'm puffing from just sitting here","code":"R06.0","observation":"symptom","value":null}
+{"id":"e_000005","ts":1787214300000,"room":"room-03","source":"vital","speaker":"unknown","quote":"","code":null,"observation":"toks","value":3}
+{"id":"e_000006","ts":1787214600000,"room":"room-09","source":"vital","speaker":"unknown","quote":"","code":null,"observation":"toks","value":2}
+{"id":"e_000007","ts":1787215200000,"room":"room-01","source":"speech","speaker":"patient","quote":"I was fine earlier but something has changed I have a sharp pain here in my chest","code":"R07.4","observation":"symptom","value":null}
+{"id":"e_000008","ts":1787215500000,"room":"room-01","source":"vital","speaker":"unknown","quote":"","code":null,"observation":"toks","value":4}
+{"id":"e_000009","ts":1787215800000,"room":"room-01","source":"speech","speaker":"patient","quote":"no no no it's different it started about 20 minutes ago and the pain is 9/10 and I cannot catch my breath","code":"R06.0","observation":"severe_statement","value":null}
+{"id":"e_000010","ts":1787216100000,"room":"room-01","source":"vital","speaker":"unknown","quote":"","code":null,"observation":"toks","value":8}
+{"id":"e_000011","ts":1787216400000,"room":"room-02","source":"vital","speaker":"unknown","quote":"","code":null,"observation":"toks","value":1}
+{"id":"e_000012","ts":1787216700000,"room":"room-05","source":"lab","speaker":"unknown","quote":"","code":null,"observation":"crp","value":12}
+{"id":"e_000013","ts":1787217000000,"room":"room-03","source":"speech","speaker":"nurse","quote":"I have chased the chest film twice, it is still not booked","code":null,"observation":"hcp_concern","value":null}
+{"id":"e_000014","ts":1787217300000,"room":"room-10","source":"vital","speaker":"unknown","quote":"","code":null,"observation":"toks","value":1}

@@ -14,7 +14,7 @@
 // It is also what makes the three interactive rooms legible on stage — a
 // change in one card cannot have come from somewhere else.
 
-import type { Event, EventId, Millis } from "../contracts/index.ts";
+import type { Event, EventId, Millis, Speaker } from "../contracts/index.ts";
 import { patientState, type PatientState } from "../engines/patientState.ts";
 import type { Level } from "../engines/rules/patient.rules.ts";
 
@@ -40,10 +40,38 @@ export interface CoordinationPlaceholder {
   readonly placeholder: true;
 }
 
+/**
+ * One piece of evidence, resolved for the surface.
+ *
+ * The id alone would make every card a lookup: web/ would have to hold the
+ * whole log to render one line. The quote, speaker and timestamp travel with
+ * the card so a room can show what was actually said without asking anyone.
+ * The id stays so the click-through to the audio span still resolves.
+ */
+export interface EvidenceRef {
+  readonly id: EventId;
+  readonly quote: string;
+  readonly speaker: Speaker;
+  readonly ts: Millis;
+}
+
+/** Patient state as the card carries it: evidence resolved, not ids. */
+export interface CardPatient {
+  readonly level: Level;
+  readonly reason_text: string;
+  readonly evidence: readonly EvidenceRef[];
+  readonly previous_level: Level;
+  readonly changed_at: Millis;
+  readonly toks_direction: PatientState["toks_direction"];
+  readonly significant_change: boolean;
+  readonly corroborated: boolean;
+  readonly response: PatientState["response"];
+}
+
 export interface RoomCard {
   readonly room: string;
   readonly kind: RoomKind;
-  readonly patient: PatientState;
+  readonly patient: CardPatient;
   readonly coordination: CoordinationPlaceholder;
   /**
    * The patient level before this fold, hoisted onto the card because web/
@@ -136,17 +164,36 @@ export function ward(
   for (const event of events) byRoom.get(event.room)?.push(event);
 
   const cards = WARD.map((definition) => {
-    const patient = patientState(byRoom.get(definition.room) ?? [], now, {
+    const roomEvents = byRoom.get(definition.room) ?? [];
+    const state = patientState(roomEvents, now, {
       room: definition.room,
       previousLevel: previousLevels[definition.room] ?? "green",
+    });
+
+    const byId = new Map(roomEvents.map((e) => [e.id, e]));
+    const evidence = state.evidence.flatMap((id) => {
+      const event = byId.get(id);
+      return event === undefined
+        ? []
+        : [Object.freeze({ id, quote: event.quote, speaker: event.speaker, ts: event.ts })];
     });
 
     return Object.freeze({
       room: definition.room,
       kind: definition.kind,
-      patient,
+      patient: Object.freeze({
+        level: state.level,
+        reason_text: state.reason_text,
+        evidence: Object.freeze(evidence),
+        previous_level: state.previous_level,
+        changed_at: state.changed_at,
+        toks_direction: state.toks_direction,
+        significant_change: state.significant_change,
+        corroborated: state.corroborated,
+        response: state.response,
+      }),
       coordination: coordinationPlaceholder(definition.room),
-      previous_level: patient.previous_level,
+      previous_level: state.previous_level,
     });
   });
 
