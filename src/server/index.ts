@@ -14,6 +14,8 @@ import { readFileSync } from "node:fs";
 
 import type { Event, Millis } from "../contracts/index.ts";
 import { ward, type RoomCard } from "../projections/ward.ts";
+import { history } from "../projections/history.ts";
+import { recordForRoom } from "../world/patients.ts";
 
 export interface ServerOptions {
   /** The event log to project. */
@@ -75,6 +77,21 @@ export function createServer(options: ServerOptions): Server {
     // rather than only the card the pipeline produced.
     if (url.pathname === "/" || url.pathname === "/index.html") {
       return sendHtml(response, readFileSync("web/index.html", "utf8"));
+    }
+
+    // The conversation held against the chart. Same fold, same until.
+    if (url.pathname === "/history") {
+      const untilParam = parseUntil(url.searchParams.get("until"));
+      if (untilParam === null) {
+        return send(response, 400, { error: "until must be a non-negative integer in milliseconds." });
+      }
+      const room = url.searchParams.get("room") ?? "room-02";
+      const moment = untilParam ?? clock();
+      const view = history(options.events, recordForRoom(room), room, moment);
+      if (view === undefined) {
+        return send(response, 404, { error: `No chart mapped to ${room}.` });
+      }
+      return send(response, 200, { until: moment, ...view });
     }
 
     if (url.pathname === "/log") {
