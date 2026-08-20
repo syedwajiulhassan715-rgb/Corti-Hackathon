@@ -1,0 +1,149 @@
+{
+  "id": "5361de94-297d-4ddd-af21-2df7ae080e95",
+  "metadata": {
+    "participantsRoles": null
+  },
+  "transcripts": [
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "Good morning Anna the chart says that you had a quiet evening the chox is one and you're doing fine",
+      "start": 608,
+      "end": 7167
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "I was fine earlier but something has changed I have a sharp pain here in my chest",
+      "start": 7487,
+      "end": 11811
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "oh you have pneumonia coughing hurts that's hardly surprising",
+      "start": 12132,
+      "end": 15647
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "no no no it's different it started about 20 minutes ago and the pain is 9/10 and I cannot catch my breath",
+      "start": 16046,
+      "end": 21647
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "oh yesterday you said your pain was only 1/10 you're talking to me and you're getting air",
+      "start": 21976,
+      "end": 29804
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "but but I'm puffing from just sitting here this be a blood clot",
+      "start": 30448,
+      "end": 35169
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "let's not diagnose ourselves I can give you some more pain medication",
+      "start": 35489,
+      "end": 39810
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "no thank you I don't I don't want to just cover the pain please check who I cannot breathe",
+      "start": 40286,
+      "end": 45325
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "okay fine let me look at the new observations",
+      "start": 45646,
+      "end": 48442
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "it's getting harder it's getting harder again I feel dizzy too",
+      "start": 48692,
+      "end": 51646
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "your oxygen saturation is 87% despite 2 L of oxygen respiration rate 30 pulse 180 blood pressure 90/80 f eight",
+      "start": 52286,
+      "end": 65488
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "is that bad could this be a blood clot",
+      "start": 65808,
+      "end": 68285
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "your neurotoxic seven this is changed significantly",
+      "start": 68449,
+      "end": 71886
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "you did not answer my question",
+      "start": 72206,
+      "end": 74050
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "I heard you I'm calling the acute team now s try sitting up right and try not to stand",
+      "start": 74605,
+      "end": 80120
+    },
+    {
+      "channel": 0,
+      "participant": 1,
+      "speakerId": 1,
+      "text": "please call my daughter as well",
+      "start": 80449,
+      "end": 82120
+    },
+    {
+      "channel": 0,
+      "participant": 0,
+      "speakerId": 0,
+      "text": "we'll deal with the implica initiated problem first in urgent clinical assistance in room one one now",
+      "start": 82761,
+      "end": 92079
+    }
+  ],
+  "usageInfo": {
+    "creditsConsumed": 0.010140000000000001
+  },
+  "recordingId": "a96df39c-05ad-4d09-bde5-32cbb1583cb8",
+  "status": "completed"
+}
