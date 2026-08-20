@@ -7,3 +7,4 @@ fixtures/audio/*.wav
 # Provided hackathon audio — large binaries, kept out of git
 fixtures/provided/audio/*
 !fixtures/provided/audio/.gitkeep
+fixtures/audio/*.m4a
