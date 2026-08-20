@@ -43,7 +43,7 @@ export function parseUntil(raw: string | null): Millis | undefined | null {
  * Build the ward payload for a moment.
  *
  * Exported separately from the HTTP plumbing so the projection can be rendered
- * to a file — fixtures/events/ward.json is this function's output — without
+ * to a file — fixtures/events/sample_ward.json is this function's output — without
  * starting a server.
  */
 export function wardResponse(
