@@ -37,8 +37,28 @@ export interface PriorityComponent {
   evidenceEventIds: string[];
 }
 
+/**
+ * One observation's trajectory, as the ward board needs it: where this patient
+ * sat, where they sit now, and whether the move is the concerning direction
+ * for that particular reading. Baseline is this patient's own -- never a
+ * population range -- which is the whole reason a bed can be lit at 145/90
+ * while the bed beside it is not.
+ */
+export interface QueueSignal {
+  observation: string;
+  baseline: number | null;
+  current: number | null;
+  delta: number | null;
+  /** Clinical judgement, not geometry. Use the delta sign for arrows. */
+  direction: "improving" | "stable" | "worsening" | "unknown";
+  concerning: boolean;
+  overdue: boolean;
+  sampleCount: number;
+}
+
 export interface QueueRow {
   patientId: string;
+  signals: QueueSignal[];
   name: string;
   room: string | null;
   level: PriorityLevel;

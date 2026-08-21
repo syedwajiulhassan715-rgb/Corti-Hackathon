@@ -135,11 +135,24 @@ button:focus-visible, [role="button"]:focus-visible, input:focus-visible, textar
 .queue-rise { animation: queue-rise .55s cubic-bezier(.2,.8,.2,1) both; }
 .causal-line { animation: causal-line .55s cubic-bezier(.2,.8,.2,1) both; }
 
+/*
+  Scroll-linked reveal, for decoration only.
+  .why-now is deliberately NOT in this list. It is a dark card carrying white
+  text, and ward-reveal starts at opacity .45 -- so the page's single most
+  important claim sat at 45% opacity until it was 28% into the viewport. On a
+  tall mobile page that is most of the time it is on screen, and white-on-dark
+  at .45 fails contrast outright.
+  prefers-reduced-motion could not save it either: the block below overrides
+  animation-duration, which a view() timeline does not use. The only correct
+  fix is for content this important not to fade at all.
+*/
 @supports (animation-timeline: view()) {
-  .echo-assistant, .why-now {
-    animation: ward-reveal linear both;
-    animation-timeline: view();
-    animation-range: entry 5% cover 28%;
+  @media (prefers-reduced-motion: no-preference) {
+    .echo-assistant {
+      animation: ward-reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 5% cover 28%;
+    }
   }
 }
 

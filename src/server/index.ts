@@ -30,7 +30,7 @@ import {
   roomForPatient,
   ALL_PATIENTS,
 } from "../world/patients.ts";
-import type { PatientPriority, PriorityLevel } from "../contracts/index.ts";
+import type { PatientPriority, PatientTrends, PriorityLevel } from "../contracts/index.ts";
 import { createCortiAuth } from "../corti/auth.ts";
 import { DiskCache } from "../corti/cache.ts";
 import { createInteraction, patientFromRecord } from "../corti/interactions.ts";
@@ -233,7 +233,8 @@ export function createServer(options: ServerOptions): Server {
       const moment = momentFrom(url, clock);
       if (moment === null) return badUntil(response);
 
-      const queue = wardQueue(live, moment);
+      const board = wardBoard(live, moment);
+      const queue = board.queue;
       const counts: Record<string, number> = {
         GREEN: 0, WATCH: 0, PERSISTING_CONCERN: 0, HIGH: 0, CRITICAL: 0,
       };
@@ -252,6 +253,21 @@ export function createServer(options: ServerOptions): Server {
             name: loadRecord(p.patientId)?.name ?? p.patientId,
             locationStatus: typeof context?.value === "string" ? context.value : "bed",
             locationEventId: context?.id ?? null,
+            // The trajectory behind the rank, so the floor plan can show WHY a
+            // bed is lit rather than only THAT it is. Signals with no current
+            // reading are dropped: an empty glyph teaches the reader nothing.
+            signals: (board.trends.get(p.patientId)?.signals ?? [])
+              .filter((signal) => signal.current !== null)
+              .map((signal) => ({
+                observation: signal.observation,
+                baseline: signal.baseline,
+                current: signal.current,
+                delta: signal.delta,
+                direction: signal.direction,
+                concerning: signal.concerning,
+                overdue: signal.overdue,
+                sampleCount: signal.sampleCount,
+              })),
           };
         }),
       });
@@ -1010,12 +1026,29 @@ function handleNurseRound(
  * property of the ward, not of the patient, so computing it twice by two
  * routes would eventually produce two different answers for the same question.
  */
-function wardQueue(events: readonly Event[], now: Millis): readonly PatientPriority[] {
+/**
+ * The ward board: the ranked queue AND the trends each rank was derived from.
+ *
+ * wardQueue() already computed the trends and then dropped them on the floor,
+ * so the ward screen could only show a status dot per bed and had to send the
+ * reader to a side panel to learn anything. Returning both lets the floor plan
+ * carry each patient's own trajectory without a second pass over the log --
+ * which matters, because this runs for all eleven patients on every request.
+ *
+ * Nothing here is new intelligence. It is the same fold, kept instead of
+ * discarded.
+ */
+function wardBoard(
+  events: readonly Event[],
+  now: Millis,
+): { readonly queue: readonly PatientPriority[]; readonly trends: ReadonlyMap<string, PatientTrends> } {
   const inputs: PatientPriorityInput[] = [];
+  const trendsById = new Map<string, PatientTrends>();
   for (const patientId of ALL_PATIENTS) {
     const view = patientHistory(events, loadRecord(patientId), now);
     if (view === undefined) continue; // a missing chart is a missing card
     const trends = patientTrend(view, now);
+    trendsById.set(patientId, trends);
     const care = projectPatientCare(events, view, trends, now);
     inputs.push({
       patientId,
@@ -1025,7 +1058,11 @@ function wardQueue(events: readonly Event[], now: Millis): readonly PatientPrior
       careGaps: care.gaps,
     });
   }
-  return prioritize(inputs, now);
+  return { queue: prioritize(inputs, now), trends: trendsById };
+}
+
+function wardQueue(events: readonly Event[], now: Millis): readonly PatientPriority[] {
+  return wardBoard(events, now).queue;
 }
 
 /** Collect a JSON request body, with a cap so a bad client cannot exhaust memory. */

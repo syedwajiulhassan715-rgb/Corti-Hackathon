@@ -13,6 +13,7 @@
 // clinicians assume any AI board is crying wolf. Showing what ECHO deliberately
 // did NOT escalate, with the reason, is the cheapest credibility we can buy.
 
+import { humanise, vocabularyFor } from "@/lib/clinical";
 import { useEffect, useState } from "react";
 import {
   getPatient,
@@ -119,7 +120,7 @@ export function PatientPanel({ patientId, until }: { patientId: string; until: n
             {tracked.map((s) => (
               <div key={s.observation}>
                 <div className="mb-1 flex items-baseline justify-between">
-                  <span className="text-tiny font-medium">{LABEL[s.observation] ?? s.observation}</span>
+                  <span className="text-tiny font-medium">{LABEL[s.observation] ?? vocabularyFor(s.observation).label}</span>
                   <Delta signal={s} />
                 </div>
                 <Sparkline
@@ -146,7 +147,7 @@ export function PatientPanel({ patientId, until }: { patientId: string; until: n
                   +{c.points}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-tiny leading-snug">{c.explanation}</p>
+                  <p className="text-tiny leading-snug">{humanise(c.explanation)}</p>
                   <p className="mt-0.5 text-micro uppercase text-faint">
                     {c.name} · {c.evidenceEventIds.length} event
                     {c.evidenceEventIds.length === 1 ? "" : "s"}
@@ -305,7 +306,7 @@ function Vital({ signal }: { signal: TrendSignal }) {
         <span className="text-micro text-faint">{UNIT[signal.observation] ?? ""}</span>
       </div>
       <div className="mt-0.5 text-micro uppercase text-faint">
-        {LABEL[signal.observation] ?? signal.observation}
+        {LABEL[signal.observation] ?? vocabularyFor(signal.observation).label}
       </div>
     </div>
   );

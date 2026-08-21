@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ChevronRight, X } from "lucide-react";
 import { getPatient, type PatientResponse, type TrendSignal } from "@/lib/api";
+import { humanise } from "@/lib/clinical";
 import { LevelBadge } from "@/components/LevelBadge";
 import { PatientPanel } from "@/components/PatientPanel";
 import { CareGapVisual, WhatChanged, WhyNow } from "@/components/PatientStory";
@@ -32,7 +33,7 @@ export function PatientCommandPanel({ patientId, until }: { patientId: string; u
       <WhyNow data={data} compact />
       <CareGapVisual data={data} />
 
-      <div className="flex items-center justify-between border-t border-ink px-6 py-4"><div><p className="text-micro font-semibold uppercase tracking-[0.12em] text-faint">Why this patient now</p><p className="mt-1 max-w-2xl text-tiny text-dim">{priority?.reasons[0] ?? "No meaningful change from this patient’s baseline."}</p></div><button onClick={() => setOpen(true)} className="flex items-center gap-2 border border-[var(--accent)] px-4 py-2 text-tiny font-semibold text-[var(--accent)]">Open patient workflow <ChevronRight size={14}/></button></div>
+      <div className="flex items-center justify-between border-t border-ink px-6 py-4"><div><p className="text-micro font-semibold uppercase tracking-[0.12em] text-faint">Why this patient now</p><p className="mt-1 max-w-2xl text-tiny text-dim">{humanise(priority?.reasons[0] ?? "No meaningful change from this patient’s baseline.")}</p></div><button onClick={() => setOpen(true)} className="flex items-center gap-2 border border-[var(--accent)] px-4 py-2 text-tiny font-semibold text-[var(--accent)]">Open patient workflow <ChevronRight size={14}/></button></div>
     </div>
     {open && <div className="fixed inset-0 z-50 bg-ink/25 backdrop-blur-[2px]" onClick={() => setOpen(false)}><aside className="ml-auto h-full w-full max-w-3xl overflow-y-auto bg-canvas p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}><div className="sticky top-0 z-10 mb-4 flex items-center justify-between border-b border-ink bg-canvas pb-3"><div><p className="text-micro uppercase text-faint">Patient workflow</p><p className="text-[17px] font-medium">Evidence, documentation and prepared action</p></div><button onClick={() => setOpen(false)} aria-label="Close patient workflow" className="border border-line bg-surface p-2"><X size={16}/></button></div><PatientPanel patientId={patientId} until={until}/></aside></div>}
   </>;
