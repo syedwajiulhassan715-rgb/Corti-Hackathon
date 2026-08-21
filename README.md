@@ -8,7 +8,7 @@
 
 **Most clinical systems remember events. ECHO remembers trajectories.**
 
-ECHO is a longitudinal ward command center that turns routine nursing observations into replayable patient memory, waits for persistent or corroborated change, and prepares the next care action for human approval.
+ECHO is a longitudinal ward command center that turns routine observations into replayable patient memory, waits for persistent or corroborated change, and prepares the next care action .
 
 [![Status](https://img.shields.io/badge/status-hackathon%20prototype-17483f?style=flat-square)](#prototype-boundaries)
 [![Corti](https://img.shields.io/badge/clinical%20AI-Corti-2f7466?style=flat-square)](#corti-integration)
