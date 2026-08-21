@@ -22,6 +22,19 @@ export interface HistoryFlag {
   readonly triggeredByCodes: readonly string[];
   /** Or something the patient said, matched as lowercase substring. */
   readonly triggeredByPhrases: readonly string[];
+  /**
+   * Or a monitor reading crossing a line.
+   *
+   * This is the half that makes the flag more than a chart review. A number on
+   * its own is the monitor the ward already has; a number plus a condition on
+   * the problem list is a different clinical question. Thresholds live here, as
+   * data, so changing one touches no code.
+   */
+  readonly triggeredByVitals?: readonly {
+    readonly observation: string;
+    readonly atLeast?: number;
+    readonly atMost?: number;
+  }[];
   /** Asked, not asserted. */
   readonly question: string;
   /** The chain, for the explanation line. */
@@ -29,6 +42,21 @@ export interface HistoryFlag {
 }
 
 export const HISTORY_FLAGS: readonly HistoryFlag[] = Object.freeze([
+  Object.freeze({
+    id: "chemo-fever-is-a-sepsis-clock",
+    requiresCondition: "C34.31",
+    triggeredByCodes: Object.freeze([]),
+    triggeredByPhrases: Object.freeze(["shivery", "cold", "chills"]),
+    triggeredByVitals: Object.freeze([
+      Object.freeze({ observation: "temperature", atLeast: 38 }),
+    ]),
+    question:
+      "Neutropenic sepsis until proven otherwise — have blood cultures been taken and antibiotics started within the hour?",
+    why:
+      "He is on concurrent chemoradiotherapy and yesterday's bloods put his ANC at 1.6, at the " +
+      "neutropenic threshold. In anyone else this temperature is a fever to watch. In him it " +
+      "starts a one-hour antibiotic clock, and the number on the monitor looks identical either way.",
+  }),
   Object.freeze({
     id: "af-new-chest-pain-or-breathlessness",
     requiresCondition: "I48.0",

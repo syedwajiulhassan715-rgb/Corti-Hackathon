@@ -16,6 +16,7 @@ function speech(quote: string, speaker: string, code: string | null, observation
   return Object.freeze({
     id: `e_${String(++counter).padStart(6, "0")}` as EventId,
     ts: counter * 1000,
+    patientId: "test_patient",
     room: "room-02",
     source: "speech",
     speaker: speaker as Event["speaker"],

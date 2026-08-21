@@ -107,6 +107,7 @@ export function history(
   const visible = events.filter((e) => e.room === room && e.ts <= now);
   const utterances = visible.filter((e) => e.observation === UTTERANCE);
   const derived = visible.filter((e) => e.observation !== UTTERANCE && e.source === "speech");
+  const feeds = visible.filter((e) => e.source !== "speech");
 
   const onChart = new Map(record.conditions.map((c) => [c.code, c]));
 
@@ -141,6 +142,24 @@ export function history(
 
     const evidence: EventId[] = [];
     const matched: string[] = [];
+
+    // Monitor readings crossing a threshold. Only the latest breach per
+    // observation is cited: a temperature over 38 for twenty minutes is one
+    // finding, not twenty, and twenty evidence ids would bury the one that
+    // matters.
+    for (const rule of flag.triggeredByVitals ?? []) {
+      const breaches = feeds.filter(
+        (e) =>
+          e.observation === rule.observation &&
+          typeof e.value === "number" &&
+          (rule.atLeast === undefined || e.value >= rule.atLeast) &&
+          (rule.atMost === undefined || e.value <= rule.atMost),
+      );
+      const latest = breaches.at(-1);
+      if (latest === undefined) continue;
+      evidence.push(latest.id);
+      matched.push(`${rule.observation} ${String(latest.value)}`);
+    }
 
     for (const event of utterances) {
       if (event.code !== null && flag.triggeredByCodes.includes(event.code)) {
