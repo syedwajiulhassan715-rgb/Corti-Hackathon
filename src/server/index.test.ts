@@ -8,6 +8,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
 import { createServer, DEMO_T0, parseUntil, wardResponse } from "./index.ts";
 import { SPEECH, OBSERVATION } from "../engines/rules/patient.rules.ts";
@@ -274,3 +276,32 @@ test("recorded demo run is isolated, retry-safe, and earns the exact causal ladd
 function roomLevel(body: { rooms: { room: string; patient: { level: string } }[] }, room: string): string {
   return body.rooms.find((r) => r.room === room)!.patient.level;
 }
+
+// ---------------------------------------------------------------- static path
+//
+// REGRESSION. The App Router emits a chunk directory named literally
+// `[patientId]`, so the browser asks for `%5BpatientId%5D`. The server used to
+// join the raw pathname, look for a directory actually called `%5BpatientId%5D`,
+// and 404. The only symptom was a console 404 and a permanently blank patient
+// page -- the screen SPEC.md calls the hero feature. Nothing failed loudly.
+
+test("a percent-encoded asset path resolves to the real file on disk", async () => {
+  const dir = join("web-next", "out", "_next", "static", "chunks", "app", "patients", "[patientId]");
+  if (!existsSync(dir)) return; // No build present; nothing to assert against.
+  const chunk = readdirSync(dir).find((name) => name.endsWith(".js"));
+  if (chunk === undefined) return;
+  await withServer(() => T, async (base) => {
+    const encoded = `${base}/_next/static/chunks/app/patients/${encodeURIComponent("[patientId]")}/${chunk}`;
+    const response = await fetch(encoded);
+    assert.equal(response.status, 200, "the encoded chunk URL the browser actually requests must serve");
+  });
+});
+
+test("a traversal attempt cannot climb out of the build root, encoded or not", async () => {
+  await withServer(() => T, async (base) => {
+    for (const attack of ["/_next/../../package.json", `/_next/${encodeURIComponent("../../package.json")}`]) {
+      const response = await fetch(`${base}${attack}`);
+      assert.notEqual(response.status, 200, `${attack} must not serve a file outside the build root`);
+    }
+  });
+});

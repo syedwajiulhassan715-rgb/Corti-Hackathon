@@ -11,7 +11,7 @@
 
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
-import { join, resolve, extname } from "node:path";
+import { join, resolve, extname, sep } from "node:path";
 
 import type { Event, EventId, EventInput, Millis } from "../contracts/index.ts";
 import { ward, type RoomCard } from "../projections/ward.ts";
@@ -204,17 +204,17 @@ export function createServer(options: ServerOptions): Server {
     const acceptsHtml = request.headers.accept?.includes("text/html") ?? false;
     const legacyJsonRoute = new Set(["/board", "/history", "/log", "/health", "/ward"]).has(url.pathname);
     if (!url.pathname.startsWith("/api/") && (acceptsHtml || !legacyJsonRoute)) {
-      const routePage = join("web-next/out", url.pathname.replace(/^\//, ""), "index.html");
-      if (resolve(routePage).startsWith(resolve("web-next/out")) && existsSync(routePage)) {
+      const routePage = buildPath(url.pathname, "index.html");
+      if (routePage !== null && existsSync(routePage)) {
         return sendHtml(response, readFileSync(routePage, "utf8"));
       }
     }
 
     // Static assets emitted by the Next build (/_next/..., icons, chunks).
     if (url.pathname.startsWith("/_next/") || STATIC_FILE.test(url.pathname)) {
-      const asset = join("web-next/out", url.pathname.replace(/^\//, ""));
+      const asset = buildPath(url.pathname);
       // Never let a crafted path climb out of the build directory.
-      if (!resolve(asset).startsWith(resolve("web-next/out"))) {
+      if (asset === null) {
         return send(response, 403, { error: "No." });
       }
       if (existsSync(asset)) {
@@ -1173,6 +1173,41 @@ const CONTENT_TYPE: Readonly<Record<string, string>> = Object.freeze({
   ".txt": "text/plain; charset=utf-8",
   ".map": "application/json; charset=utf-8",
 });
+
+/** The Next static-export root. Every served file must resolve inside it. */
+const ROOT = "web-next/out";
+/** NUL, built rather than escaped so no toolchain can mangle the literal. */
+const NUL = String.fromCharCode(0);
+
+/**
+ * Resolve a request path to a file inside the Next build, or null if it does
+ * not stay there.
+ *
+ * THE DECODE IS THE WHOLE POINT. The App Router emits a chunk directory named
+ * literally `[patientId]`, so the browser requests
+ * `/_next/static/chunks/app/patients/%5BpatientId%5D/page-<hash>.js`. Joining
+ * the raw pathname looked for a directory called `%5BpatientId%5D`, which does
+ * not exist, so the chunk 404'd and /patients/<id>/ rendered as an empty
+ * skeleton forever — the hero screen, blank, with only a console 404 to say so.
+ *
+ * Decoding first is also why the containment check has to come after it: a
+ * crafted `%2e%2e%2f` only becomes `../` once decoded, so a guard applied to
+ * the encoded form would be checking the wrong string.
+ */
+function buildPath(pathname: string, ...tail: readonly string[]): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null; // Malformed percent-encoding. Not a path we serve.
+  }
+  if (decoded.includes(NUL)) return null;
+  const candidate = join(ROOT, decoded.replace(/^\//, ""), ...tail);
+  const root = resolve(ROOT);
+  const full = resolve(candidate);
+  if (full !== root && !full.startsWith(root + sep)) return null;
+  return candidate;
+}
 
 function sendAsset(response: ServerResponse, path: string): void {
   const body = readFileSync(path);
