@@ -14,3 +14,6 @@ fixtures/audio/*.m4a
 
 # Stage runner output — regenerated from fixtures and the cache
 runs/
+
+# Local demo server output
+.demo.log

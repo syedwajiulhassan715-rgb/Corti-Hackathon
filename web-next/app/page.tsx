@@ -6,6 +6,7 @@ import { DEMO_STEPS, getWard, momentForStep, resetDemo, type QueueRow, type Ward
 import { WardFloorPlan } from "@/components/WardFloorPlan";
 import { signed, vocabularyFor } from "@/lib/clinical";
 import { PatientCommandPanel } from "@/components/PatientCommandPanel";
+import { WardTwinIntro } from "@/components/WardTwinIntro";
 
 const STORY = [
   { label: "Baseline", title: "Ward state reconstructed", detail: "Historical observations establish each patient’s personal baseline." },
@@ -33,7 +34,7 @@ export default function WardPage() {
   useEffect(() => { if (!playing) return; if (step >= DEMO_STEPS) { setPlaying(false); return; } const timer = window.setTimeout(() => advance(1), 2600); return () => window.clearTimeout(timer); }, [playing, step, advance]);
   useEffect(() => { const key = (event: KeyboardEvent) => { if (event.key === "ArrowRight") advance(1); if (event.key === "ArrowLeft") advance(-1); if (event.key.toLowerCase() === "r") void reset(); if (event.key === " ") { event.preventDefault(); setPlaying((value) => !value); } }; window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key); }, [advance, reset]);
 
-  return <main className="min-h-screen bg-[#f2f4f3]">
+  return <WardTwinIntro ward={ward}><main className="min-h-screen bg-[#f2f4f3]">
     <Header ward={ward} step={step} setStep={setStep} advance={advance} reset={reset} playing={playing} setPlaying={setPlaying} showFlow={showFlow} setShowFlow={setShowFlow} />
     <LiveTicker ward={ward} step={step} playing={playing} />
     {error && <div className="m-5 border border-[var(--lvl-high)] bg-white p-4 text-tiny">Could not reach ECHO: {error}</div>}
@@ -41,12 +42,36 @@ export default function WardPage() {
     <div key={step} className="ward-reveal grid min-h-[calc(100vh-105px)] xl:grid-cols-[minmax(680px,1fr)_440px]">
       <section className="border-r border-line p-4 md:p-5 xl:p-6 2xl:p-7">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--accent)]">North ward · live spatial view</p><h2 className="mt-1 text-[clamp(24px,2.2vw,34px)] font-medium tracking-[-0.04em]">Every patient, at a glance</h2></div><p className="max-w-xs text-[11px] leading-relaxed text-dim sm:text-right">Select a room to inspect the patient. Press <b className="font-semibold text-ink">Play live round</b> to watch evidence become priority.</p></div>
-        <div className="overflow-hidden rounded-2xl border border-[#ccd5d1] bg-white shadow-[0_24px_80px_rgba(29,50,43,0.09)]"><div className="flex h-12 items-center justify-between border-b border-ink px-5"><span className="text-[11px] font-semibold uppercase tracking-[0.12em]">Ward floor</span><span className="flex items-center gap-2 text-[10px] uppercase text-faint"><span className={`h-1.5 w-1.5 rounded-full bg-[var(--lvl-green)] ${playing ? "live-pulse" : ""}`} />{playing ? "round updating" : "monitoring live"}</span></div><WardFloorPlan rows={ward?.queue ?? []} selected={selected} onSelect={select} /></div>
+        {/*
+          The frame around the twin. It is a dark title bar and nothing else:
+          the floor below it carries every piece of state, so anything printed
+          up here would be a second copy of something already on the plan.
+        */}
+        <div className="overflow-hidden rounded-2xl border border-[#ccd5d1] bg-white shadow-[0_24px_80px_rgba(29,50,43,0.09)]">
+          <div className="flex h-12 items-center justify-between gap-3 bg-[#102e28] px-5 text-white">
+            <span className="flex items-baseline gap-2.5">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">North ward</span>
+              <span className="text-[10px] uppercase tracking-[0.14em] text-white/45">Level 2 · digital twin</span>
+            </span>
+            <span className="flex items-center gap-2 text-[10px] uppercase tracking-[0.1em] text-white/55">
+              <span className={`h-1.5 w-1.5 rounded-full bg-[#77b5a7] ${playing ? "live-pulse" : ""}`} />
+              {playing ? "round updating" : "monitoring live"}
+            </span>
+          </div>
+          <WardFloorPlan
+            rows={ward?.queue ?? []}
+            selected={selected}
+            onSelect={select}
+            events={ward?.generated_from_events ?? 0}
+            until={until}
+            live={playing}
+          />
+        </div>
         <AttentionTray rows={ward?.queue ?? []} selected={selected} onSelect={select} />
       </section>
       <aside className="bg-[#f8f9f8] p-4 md:p-5 xl:p-6"><div className="mb-4 flex h-10 items-center justify-between"><div className="flex items-center gap-2"><Bell size={15} className="text-[var(--accent)]" /><span className="text-[11px] font-semibold uppercase tracking-[0.12em]">Patient intelligence</span></div><span className="text-[10px] uppercase text-faint">select any room</span></div>{selected ? <PatientCommandPanel patientId={selected} until={until} /> : <div className="flex h-[70vh] items-center justify-center rounded-xl border border-line bg-white text-tiny text-faint">Select a room</div>}</aside>
     </div>
-  </main>;
+  </main></WardTwinIntro>;
 }
 
 function Header({ ward, step, setStep, advance, reset, playing, setPlaying, showFlow, setShowFlow }: { ward: WardResponse | null; step: number; setStep: (step: number) => void; advance: (by: number) => void; reset: () => void; playing: boolean; setPlaying: (value: boolean) => void; showFlow: boolean; setShowFlow: (value: boolean) => void }) {

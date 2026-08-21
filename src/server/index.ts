@@ -1253,9 +1253,34 @@ function handleNurseRound(
  * Nothing here is new intelligence. It is the same fold, kept instead of
  * discarded.
  */
+/**
+ * How far back the board looks to decide what each patient's level WAS.
+ *
+ * One demo step, deliberately: the board's "previous" has to be far enough
+ * back that a patient who climbed during the step actually reads as changed,
+ * and near enough that it still describes this shift rather than last week.
+ * Tying it to DEMO_STEP_MS keeps the scrubber and the badge telling the same
+ * story -- step back one notch and the delta you were shown is the delta you
+ * now see as the level.
+ */
+export const PREVIOUS_LEVEL_LOOKBACK_MS = DEMO_STEP_MS;
+
 function wardBoard(
   events: readonly Event[],
   now: Millis,
+): { readonly queue: readonly PatientPriority[]; readonly trends: ReadonlyMap<string, PatientTrends> } {
+  return foldWard(events, now, previousLevels(events, now));
+}
+
+/**
+ * One fold of the ward at one moment. `known` supplies each patient's prior
+ * level; it is passed in rather than remembered so this stays a pure function
+ * of (events, now) and replay to T still reproduces T exactly.
+ */
+function foldWard(
+  events: readonly Event[],
+  now: Millis,
+  known: ReadonlyMap<string, PriorityLevel>,
 ): { readonly queue: readonly PatientPriority[]; readonly trends: ReadonlyMap<string, PatientTrends> } {
   const inputs: PatientPriorityInput[] = [];
   const trendsById = new Map<string, PatientTrends>();
@@ -1269,11 +1294,39 @@ function wardBoard(
       patientId,
       trends,
       history: view,
-      previousLevel: null,
+      previousLevel: known.get(patientId) ?? null,
       careGaps: care.gaps,
     });
   }
   return { queue: prioritize(inputs, now), trends: trendsById };
+}
+
+/**
+ * What the ward looked like one lookback ago, as level per patient.
+ *
+ * This is a SECOND full fold -- eleven charts, trends and care gaps again --
+ * so it is skipped whenever it could not say anything: if the lookback lands
+ * before the first event in the slice there is no history to fold, and the
+ * honest answer is "unknown", not GREEN. An empty map means every row reports
+ * previousLevel: null and the UI shows no delta, which is what it did before
+ * this existed.
+ */
+function previousLevels(
+  events: readonly Event[],
+  now: Millis,
+): ReadonlyMap<string, PriorityLevel> {
+  const earlier = now - PREVIOUS_LEVEL_LOOKBACK_MS;
+  let firstTs = Infinity;
+  for (const event of events) if (event.ts < firstTs) firstTs = event.ts;
+  if (earlier < firstTs) return new Map();
+
+  const levels = new Map<string, PriorityLevel>();
+  // `new Map()` on the inner call, never previousLevels() again: the prior
+  // fold has no prior of its own, and that is what stops this recursing.
+  for (const row of foldWard(events, earlier, new Map()).queue) {
+    levels.set(row.patientId, row.level);
+  }
+  return levels;
 }
 
 function wardQueue(events: readonly Event[], now: Millis): readonly PatientPriority[] {

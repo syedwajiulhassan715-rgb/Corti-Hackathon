@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -13,6 +13,7 @@ import {
   FileCheck2,
   FileClock,
   HeartPulse,
+  Loader2,
   Mic,
   MonitorUp,
   Play,
@@ -40,9 +41,32 @@ import {
 } from "@/lib/api";
 import { LevelBadge } from "@/components/LevelBadge";
 import { RecommendedAction } from "@/components/RecommendedAction";
+import {
+  CountUp,
+  DrawIn,
+  PersistenceTrack,
+  SignalField,
+  StaggerList,
+  StreamingLineChart,
+  WordReveal,
+  useReducedMotion,
+  type ChartPoint,
+} from "@/components/motion";
+// Scoped to this surface on purpose: the live pipeline is the only page that
+// animates like this, so its stylesheet is imported by the component that owns
+// it rather than added to the global sheet every other screen loads.
+import "@/app/motion.css";
 
 const HERO = "elena_petrova";
 const STAGES = ["Encounter", "Memory", "Monitor", "Why now", "Action"];
+/** The five-minute story, in the order the run actually produces it. */
+const STORY = [
+  "Live conversation",
+  "Corti transcript + facts",
+  "Patient memory changes",
+  "Monitor trend persists",
+  "Priority → notification → action",
+];
 const SUPPORTED_AUDIO = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"];
 
 export function LiveDemo() {
@@ -284,6 +308,32 @@ export function LiveDemo() {
     stopMeter();
   }
 
+  // Derived above the early return, because the scroll effect below it is a
+  // hook and hooks cannot sit under a conditional return.
+  const stage = useMemo(() => {
+    if (!run) return 0;
+    const rows = run.events ?? [];
+    const notified = rows.some((event) => event.observation === "notification_created");
+    const decided = rows.some((event) => event.value === "approved" || event.value === "rejected");
+    const memory = run.activities.some((item) => item.type === "patient_history.updated");
+    const priority = run.activities.some((item) => item.type === "priority.changed");
+    return decided || notified ? 4 : priority ? 3 : run.monitorStep ? 2 : memory ? 1 : 0;
+  }, [run]);
+
+  const reducedMotion = useReducedMotion();
+  const lastStageRef = useRef(0);
+
+  // The presenter should never have to find the stage that just opened. Only
+  // forward movement scrolls -- a poll that briefly reports a lower stage must
+  // not yank the page backwards mid-sentence.
+  useEffect(() => {
+    const previous = lastStageRef.current;
+    lastStageRef.current = stage;
+    if (stage <= previous) return;
+    const target = document.querySelector<HTMLElement>(`[data-stage="${stage}"]`);
+    target?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+  }, [reducedMotion, stage]);
+
   if (!run) {
     return <Launch onLive={startLive} onRecorded={startRecorded} busy={busy} error={error} />;
   }
@@ -295,10 +345,8 @@ export function LiveDemo() {
   const facts = events.filter((event) => event.source === "speech" && event.observation !== "utterance");
   const vitals = events.filter((event) => event.source === "vital");
   const notification = events.find((event) => event.observation === "notification_created");
-  const actionEvent = events.find((event) => event.value === "approved" || event.value === "rejected");
   const memoryUpdated = run.activities.some((item) => item.type === "patient_history.updated");
   const priorityChanged = run.activities.some((item) => item.type === "priority.changed");
-  const stage = actionEvent ? 4 : notification ? 4 : priorityChanged ? 3 : run.monitorStep ? 2 : memoryUpdated ? 1 : 0;
   const selectedEvidence = evidenceId ? evidence.get(evidenceId) ?? null : null;
 
   return (
@@ -381,6 +429,15 @@ export function LiveDemo() {
   );
 }
 
+/**
+ * The way in.
+ *
+ * A different surface from the rest of the app on purpose: the pipeline page
+ * is a stage, and the ward board is a workplace. The ambient field behind the
+ * type is scenery and is built so it cannot be mistaken for a patient trace --
+ * see SignalField. The type resolves word by word so the second sentence, which
+ * is the whole pitch, lands last.
+ */
 function Launch({
   onLive,
   onRecorded,
@@ -392,48 +449,174 @@ function Launch({
   busy: boolean;
   error: string | null;
 }) {
+  // Which button is waiting. `busy` alone cannot say, and a spinner on the
+  // button nobody pressed is a small lie about what the system is doing.
+  const [pending, setPending] = useState<"live" | "recorded" | null>(null);
+  useEffect(() => {
+    if (!busy) setPending(null);
+  }, [busy]);
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#e9efec] p-5">
-      <div className="w-full max-w-5xl overflow-hidden border border-[#aebeb8] bg-white shadow-[0_35px_100px_rgba(20,49,41,.14)]">
-        <div className="grid md:grid-cols-[1.2fr_.8fr]">
-          <section className="p-8 md:p-12">
-            <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[var(--accent)]">ECHO · Live clinical pipeline</p>
-            <h1 className="mt-5 max-w-xl text-[clamp(34px,5vw,62px)] font-medium leading-[.98] tracking-[-.055em]">
-              Don&rsquo;t watch a dashboard.<br /><span className="text-[#547169]">Watch what happens.</span>
-            </h1>
-            <p className="mt-6 max-w-lg text-[14px] leading-relaxed text-dim">
-              Speak with one patient. Corti captures the encounter. ECHO remembers it, waits for sustained evidence, then exposes the exact event that changed attention.
+    <main className="relative min-h-screen overflow-hidden bg-[#0d2a24] text-white">
+      <SignalField />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_18%_18%,rgba(121,201,180,.13),transparent_62%)]" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#0a221d] to-transparent" />
+
+      <div className="relative mx-auto flex min-h-screen max-w-[1240px] items-center px-6 py-16 md:px-10">
+        <div className="grid w-full items-center gap-12 lg:grid-cols-[1.12fr_.88fr] lg:gap-16">
+          <section>
+            <p className="motion-fade flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-[.22em] text-[#79c9b4]">
+              <span className="live-pulse h-1.5 w-1.5 rounded-full bg-[#79c9b4]" />
+              ECHO &middot; Live clinical pipeline
             </p>
-            <div className="mt-9 flex flex-wrap gap-3">
-              <button disabled={busy} onClick={onLive} className="flex items-center gap-3 bg-[#143b34] px-5 py-3.5 text-[11px] font-semibold text-white shadow-lg transition hover:-translate-y-px disabled:opacity-50">
-                <Mic size={15} />Start live encounter
-              </button>
-              <button disabled={busy} onClick={onRecorded} className="flex items-center gap-3 border border-[#9eafa8] px-5 py-3.5 text-[11px] font-semibold text-ink transition hover:bg-sunk disabled:opacity-50">
-                <Play size={14} />Use recorded fallback
-              </button>
+
+            <h1 className="mt-6 max-w-2xl text-[clamp(36px,5.4vw,66px)] font-medium leading-[1.02] tracking-[-.055em]">
+              <WordReveal
+                delay={0.12}
+                step={0.075}
+                segments={[
+                  { text: "Don’t watch a dashboard.", breakAfter: true },
+                  { text: "Watch what happens.", className: "text-[#79c9b4]" },
+                ]}
+              />
+            </h1>
+
+            <p
+              className="motion-rise mt-7 max-w-lg text-[14px] leading-relaxed text-white/60"
+              style={{ "--motion-delay": ".72s" } as CSSProperties}
+            >
+              Speak with one patient. Corti captures the encounter. ECHO remembers it, waits for sustained evidence, then
+              exposes the exact event that changed attention.
+            </p>
+
+            <div className="motion-rise mt-9 flex flex-wrap gap-3" style={{ "--motion-delay": ".86s" } as CSSProperties}>
+              <HeroButton
+                primary
+                disabled={busy}
+                loading={pending === "live"}
+                onClick={() => {
+                  setPending("live");
+                  onLive();
+                }}
+                icon={<Mic size={15} />}
+                label="Start live encounter"
+                loadingLabel="Opening microphone"
+              />
+              <HeroButton
+                disabled={busy}
+                loading={pending === "recorded"}
+                onClick={() => {
+                  setPending("recorded");
+                  onRecorded();
+                }}
+                icon={<Play size={14} />}
+                label="Use recorded fallback"
+                loadingLabel="Loading fixture"
+              />
             </div>
-            {error && <p className="mt-4 text-[11px] text-[var(--lvl-high)]">{error}</p>}
-            <p className="mt-7 max-w-lg text-[10px] leading-relaxed text-faint">
-              Live mode uses the browser microphone and configured Corti Streams credentials. The fallback is a clearly labeled synthetic result; it never claims a live API call.
+
+            {error && (
+              <p role="alert" className="motion-rise mt-5 max-w-lg border-l-2 border-[#e08a7a] pl-3 text-[11px] text-[#f0b4a8]">
+                {error}
+              </p>
+            )}
+
+            <p
+              className="motion-fade mt-8 max-w-lg text-[10px] leading-relaxed text-white/35"
+              style={{ "--motion-delay": "1.02s" } as CSSProperties}
+            >
+              Live mode uses the browser microphone and configured Corti Streams credentials. The fallback is a clearly
+              labeled synthetic result; it never claims a live API call.
             </p>
           </section>
-          <aside className="border-l border-line bg-[#143b34] p-8 text-white md:p-10">
-            <p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#8fc5b6]">Five-minute story</p>
-            <div className="mt-8 space-y-6">
-              {["Live conversation", "Corti transcript + facts", "Patient memory changes", "Monitor trend persists", "Priority → notification → action"].map((text, index) => (
-                <div key={text} className="flex items-center gap-4">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/20 text-[10px] tabular">0{index + 1}</span>
-                  <span className="text-[12px] text-white/80">{text}</span>
-                </div>
-              ))}
-            </div>
-            <blockquote className="mt-10 border-t border-white/15 pt-6 text-[17px] leading-snug">
-              “Most systems remember events.<br />ECHO remembers trajectories.”
+
+          <aside className="relative overflow-hidden border border-white/10 bg-white/[.04] p-8 backdrop-blur-[2px] md:p-10">
+            <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#79c9b4]">Five-minute story</p>
+            <StoryRail active={pending ? 0 : -1} delay={0.5} />
+            <blockquote
+              className="motion-rise mt-9 border-t border-white/10 pt-6 text-[17px] leading-snug text-white/85"
+              style={{ "--motion-delay": "1.14s" } as CSSProperties}
+            >
+              &ldquo;Most systems remember events.<br />ECHO remembers trajectories.&rdquo;
             </blockquote>
           </aside>
         </div>
       </div>
     </main>
+  );
+}
+
+/**
+ * The five steps, in sequence.
+ *
+ * `active` is an index, so the same rail renders the un-started hero (-1, no
+ * step claimed) and a run in flight. It never advances itself: a rail that
+ * animated forward on a timer would be narrating progress the run has not made.
+ */
+function StoryRail({ active, delay = 0 }: { active: number; delay?: number }) {
+  return (
+    <ol className="mt-8 space-y-5">
+      <StaggerList delay={delay} step={0.11} variant="slide">
+        {STORY.map((text, index) => {
+          const done = index < active;
+          const now = index === active;
+          return (
+            <li key={text} className="flex items-center gap-4">
+              <span
+                className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[10px] tabular transition-colors duration-500 ${
+                  done
+                    ? "border-[#79c9b4] bg-[#79c9b4] text-[#0d2a24]"
+                    : now
+                      ? "border-[#79c9b4] text-[#79c9b4]"
+                      : "border-white/20 text-white/50"
+                }`}
+              >
+                {done ? <Check size={12} /> : `0${index + 1}`}
+                {now && <span className="live-pulse absolute inset-0 rounded-full border border-[#79c9b4]" aria-hidden="true" />}
+              </span>
+              <span className={`text-[12px] transition-colors duration-500 ${now || done ? "text-white" : "text-white/55"}`}>
+                {text}
+              </span>
+            </li>
+          );
+        })}
+      </StaggerList>
+    </ol>
+  );
+}
+
+function HeroButton({
+  primary,
+  disabled,
+  loading,
+  onClick,
+  icon,
+  label,
+  loadingLabel,
+}: {
+  primary?: boolean;
+  disabled: boolean;
+  loading: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  loadingLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      aria-busy={loading}
+      className={`motion-press flex items-center gap-3 px-5 py-3.5 text-[11px] font-semibold disabled:opacity-45 ${
+        primary
+          ? "bg-[#79c9b4] text-[#0b241f] shadow-[0_16px_40px_rgba(121,201,180,.22)] hover:shadow-[0_20px_52px_rgba(121,201,180,.32)]"
+          : "border border-white/25 text-white hover:border-white/60 hover:bg-white/5"
+      }`}
+    >
+      {loading ? <Loader2 size={15} className="motion-spin" /> : icon}
+      {loading ? loadingLabel : label}
+    </button>
   );
 }
 
@@ -471,18 +654,50 @@ function TruthBadge({ run, captureFailed }: { run: DemoRunSnapshot; captureFaile
   );
 }
 
+/**
+ * Where the run has got to.
+ *
+ * The connector between two stages FILLS rather than switching colour, so a
+ * stage opening is visible from the back of a room without anyone having to be
+ * looking at the rail when it happens. Nothing here advances on a timer: every
+ * step of `active` is a persisted event.
+ */
 function StageRail({ active }: { active: number }) {
   return (
     <div className="flex h-10 items-center border-t border-line px-5 md:px-8">
-      {STAGES.map((label, index) => (
-        <div key={label} className="flex flex-1 items-center">
-          <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] ${index < active ? "bg-[var(--accent)] text-white" : index === active ? "border border-[var(--accent)] bg-white text-[var(--accent)]" : "border border-line text-faint"}`}>
-            {index < active ? <Check size={10} /> : index + 1}
-          </span>
-          <span className={`ml-2 hidden text-[10px] font-semibold uppercase tracking-wide sm:block ${index <= active ? "text-ink" : "text-faint"}`}>{label}</span>
-          {index < STAGES.length - 1 && <span className={`mx-3 h-px flex-1 ${index < active ? "bg-[var(--accent)]" : "bg-line"}`} />}
-        </div>
-      ))}
+      {STAGES.map((label, index) => {
+        const done = index < active;
+        const now = index === active;
+        return (
+          <div key={label} className="flex flex-1 items-center">
+            <span
+              className={`relative flex h-5 w-5 items-center justify-center rounded-full text-[9px] transition-colors duration-500 ${
+                done
+                  ? "bg-[var(--accent)] text-white"
+                  : now
+                    ? "border border-[var(--accent)] bg-white text-[var(--accent)]"
+                    : "border border-line text-faint"
+              }`}
+              title={STORY[index]}
+            >
+              {done ? <Check size={10} /> : index + 1}
+              {now && <span className="live-pulse absolute inset-0 rounded-full border border-[var(--accent)]" aria-hidden="true" />}
+            </span>
+            <span
+              className={`ml-2 hidden text-[10px] font-semibold uppercase tracking-wide transition-colors duration-500 sm:block ${
+                index <= active ? "text-ink" : "text-faint"
+              }`}
+            >
+              {label}
+            </span>
+            {index < STAGES.length - 1 && (
+              <span className="mx-3 h-px flex-1 bg-line">
+                <span className="motion-fill block h-px bg-[var(--accent)]" style={{ width: done ? "100%" : "0%" }} />
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -533,7 +748,7 @@ function Encounter({
       }));
 
   return (
-    <section className="p-6 md:p-9">
+    <section data-stage="0" className="scroll-mt-[116px] p-6 md:p-9">
       <SectionHead
         number="01"
         eyebrow="Conversation"
@@ -609,7 +824,7 @@ function Encounter({
 
 function Memory({ facts, run, memoryUpdated }: { facts: EchoEvent[]; run: DemoRunSnapshot; memoryUpdated: boolean }) {
   return (
-    <section className="p-6 md:p-9" aria-live="polite">
+    <section data-stage="1" className="scroll-mt-[116px] p-6 md:p-9" aria-live="polite">
       <SectionHead
         number="02"
         eyebrow="Raw → structured"
@@ -629,8 +844,8 @@ function Memory({ facts, run, memoryUpdated }: { facts: EchoEvent[]; run: DemoRu
         <div className="border-l border-[#4b8b79] pl-4">
           <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[var(--accent)]">After encounter</p>
           <div className="mt-3 space-y-3">
-            {facts.length ? facts.slice(-5).map((fact) => (
-              <details key={fact.id} className="fact-enter group">
+            {facts.length ? <StaggerList step={0.1} variant="slide">{facts.slice(-5).map((fact) => (
+              <details key={fact.id} className="group">
                 <summary className="cursor-pointer list-none">
                   <div className="flex items-start gap-3">
                     <span className="mt-1 h-2 w-2 rounded-full bg-[#4b8b79]" />
@@ -650,7 +865,7 @@ function Memory({ facts, run, memoryUpdated }: { facts: EchoEvent[]; run: DemoRu
                     : `Correlated by ${run.runId}; Corti did not return a segment-level evidence id.`}
                 </div>
               </details>
-            )) : <p className="text-[11px] text-faint">No clinical fact persisted yet.</p>}
+            ))}</StaggerList> : <p className="text-[11px] text-faint">No clinical fact persisted yet.</p>}
           </div>
         </div>
       </div>
@@ -678,20 +893,51 @@ function Monitor({
 }) {
   const steps = groupVitals(vitals);
   const ready = run.mode === "recorded" ? run.status === "ready" : run.status === "ended";
+  const offset = (ts: number) => clinicalOffset(run.startedAt, ts);
+
   return (
-    <section className="p-6 md:p-9">
+    <section data-stage="2" className="scroll-mt-[116px] p-6 md:p-9">
       <SectionHead number="03" eyebrow="Time + monitor" title="Let the trajectory develop" source="SIMULATED DEVICE INPUT → REAL EVENT APPEND" icon={<MonitorUp size={18} />} />
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_220px]">
         <div>
-          <div className="grid grid-cols-2 border-y border-line lg:grid-cols-4">
+          {/*
+            The charts are the argument and the tiles below are the receipts.
+            Both are folds of the same vital events -- nothing is drawn that is
+            not an appended event, which is why an empty run draws an empty box
+            rather than an inviting flat line at some plausible number.
+          */}
+          <div className="grid gap-6 border-b border-line pb-6 md:grid-cols-2">
+            <VitalTrace
+              observation="spo2"
+              label="Oxygen saturation"
+              unit="%"
+              vitals={vitals}
+              run={run}
+              formatX={offset}
+              lowerIsWorse
+            />
+            <VitalTrace
+              observation="systolic_bp"
+              label="Systolic BP"
+              unit="mmHg"
+              vitals={vitals}
+              run={run}
+              formatX={offset}
+            />
+          </div>
+
+          <div className="mt-6 grid grid-cols-2 border-y border-line lg:grid-cols-4">
             {Array.from({ length: 4 }, (_, index) => {
               const point = steps[index];
               return (
                 <div key={index} className={`relative min-h-[210px] border-r border-line px-4 py-4 transition-all ${point ? "monitor-enter bg-[#f1f6f4]" : "bg-white text-faint"}`}>
-                  <p className="text-[9px] font-bold uppercase tracking-wide">{point ? clinicalOffset(run.startedAt, point.ts) : `Reading ${index + 1}`}</p>
+                  <p className="text-[9px] font-bold uppercase tracking-wide">{point ? offset(point.ts) : `Reading ${index + 1}`}</p>
                   {point ? (
                     <>
-                      <p className="mt-4 text-[23px] font-semibold tabular">{point.spo2}<span className="text-[10px] text-faint">%</span></p>
+                      <p className="mt-4 text-[23px] font-semibold tabular">
+                        <CountUp value={point.spo2} />
+                        <span className="text-[10px] text-faint">%</span>
+                      </p>
                       <p className="text-[10px] text-dim">SpO₂</p>
                       <div className="mt-4 grid grid-cols-3 gap-2">
                         <TinyVital label="HR" value={point.heart_rate} />
@@ -711,18 +957,100 @@ function Monitor({
           </p>
         </div>
         <div>
-          <button disabled={busy || run.monitorStep >= 4 || !ready || captureFailed} onClick={onAdvance} className="flex w-full items-center justify-center gap-2 bg-[#173b35] px-4 py-3 text-[10px] font-semibold text-white transition hover:-translate-y-px disabled:opacity-35">
-            <HeartPulse size={14} />{run.monitorStep ? "Advance monitor" : "Start device stream"}
+          <button disabled={busy || run.monitorStep >= 4 || !ready || captureFailed} onClick={onAdvance} className="motion-press flex w-full items-center justify-center gap-2 bg-[#173b35] px-4 py-3 text-[10px] font-semibold text-white disabled:opacity-35">
+            {busy ? <Loader2 size={14} className="motion-spin" /> : <HeartPulse size={14} />}
+            {run.monitorStep ? "Advance monitor" : "Start device stream"}
           </button>
           {!ready && !captureFailed && run.mode === "live" && <p className="mt-2 text-[9px] leading-relaxed text-faint">End the Corti encounter and wait for ENDED before introducing device data.</p>}
           <div className="mt-4 border-l border-line pl-3">
             <p className="text-[9px] font-bold uppercase tracking-wide text-faint">Confirmed appends</p>
-            <p className="mt-1 text-[23px] font-semibold tabular">{vitals.length}</p>
+            <p className="mt-1 text-[23px] font-semibold tabular"><CountUp value={vitals.length} /></p>
             <p className="text-[10px] text-dim">vital events in this run</p>
+          </div>
+          <div className="mt-4 border-l border-line pl-3">
+            <p className="text-[9px] font-bold uppercase tracking-wide text-faint">Monitor step</p>
+            <div className="mt-2 flex gap-1.5">
+              {Array.from({ length: 4 }, (_, index) => (
+                <span
+                  key={index}
+                  className={`h-1.5 flex-1 rounded-full transition-colors duration-500 ${index < run.monitorStep ? "bg-[var(--accent)]" : "bg-line"}`}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * One observation, drawn against this patient's own baseline, with the move
+ * called out in the corner.
+ *
+ * The delta counts rather than snaps because on a projector a number that
+ * changes between two poll frames is simply not seen. The direction word is
+ * clinical judgement taken from the trend engine, never inferred here from the
+ * sign of the delta -- falling saturation and falling blood pressure are not
+ * the same news as a falling temperature.
+ */
+function VitalTrace({
+  observation,
+  label,
+  unit,
+  vitals,
+  run,
+  formatX,
+  lowerIsWorse = false,
+}: {
+  observation: string;
+  label: string;
+  unit: string;
+  vitals: EchoEvent[];
+  run: DemoRunSnapshot;
+  formatX: (ts: number) => string;
+  lowerIsWorse?: boolean;
+}) {
+  const points = pointsFor(vitals, observation);
+  const signal = run.trends?.signals.find((item) => item.observation === observation) ?? null;
+  const baseline = signal?.baseline ?? null;
+  const current = points.length ? points[points.length - 1].value : null;
+  const delta = baseline !== null && current !== null ? current - baseline : null;
+  const concerning = signal?.concerning === true;
+  const worse = delta === null ? false : lowerIsWorse ? delta < 0 : Math.abs(delta) > 0 && concerning;
+
+  return (
+    <div>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-[.14em] text-faint">{label}</p>
+          <p className="mt-1 text-[26px] font-semibold leading-none tabular">
+            <CountUp value={current} />
+            <span className="ml-1 text-[11px] font-medium text-faint">{unit}</span>
+          </p>
+        </div>
+        {delta !== null && (
+          <div className={`text-right ${worse || concerning ? "text-[var(--lvl-high)]" : "text-dim"}`}>
+            <p className="text-[15px] font-semibold leading-none">
+              <CountUp value={delta} signDisplay decimals={Math.abs(delta) < 10 ? 1 : 0} />
+            </p>
+            <p className="mt-1 text-[9px] uppercase tracking-wide">
+              {signal ? signal.direction : "vs baseline"}
+            </p>
+          </div>
+        )}
+      </div>
+      <StreamingLineChart
+        className="mt-3"
+        points={points}
+        label="against this patient's own baseline"
+        baseline={baseline}
+        concerning={concerning}
+        height={128}
+        formatX={formatX}
+        emptyLabel="No reading appended"
+      />
+    </div>
   );
 }
 
@@ -736,13 +1064,23 @@ function Correlation({ run, facts, onEvidence }: { run: DemoRunSnapshot; facts: 
   const factCited = facts.some((fact) => fact.causedByEventIds?.some((id) => cited.has(id)) || cited.has(fact.id));
 
   return (
-    <section className={`p-6 transition-colors duration-700 md:p-9 ${high ? "bg-[#143b34] text-white" : "bg-[#f6f7f6]"}`} aria-live="polite">
+    <section data-stage="3" className={`scroll-mt-[116px] p-6 transition-colors duration-700 md:p-9 ${high ? "bg-[#143b34] text-white" : "bg-[#f6f7f6]"}`} aria-live="polite">
       <SectionHead number="04" eyebrow="Correlation" title={high ? "ECHO connected the causal signals" : "Evidence is still accumulating"} source="ECHO DETERMINISTIC TREND + PRIORITY ENGINE" icon={<Sparkles size={18} />} inverse={high} />
 
       <div className="mt-7 grid gap-3 md:grid-cols-3">
-        {signals.length ? signals.map((signal) => (
-          <SignalReceipt key={signal.observation} signal={signal} inverse={high} onEvidence={onEvidence} />
-        )) : (
+        {signals.length ? (
+          <StaggerList step={0.13} variant="rise">
+            {signals.map((signal) => (
+              <SignalReceipt
+                key={signal.observation}
+                signal={signal}
+                points={pointsFor(run.events ?? [], signal.observation)}
+                inverse={high}
+                onEvidence={onEvidence}
+              />
+            ))}
+          </StaggerList>
+        ) : (
           <div className={`border p-4 md:col-span-3 ${high ? "border-white/15" : "border-line"}`}>
             <p className="text-[11px] text-dim">No engine-cited concerning trend is present yet.</p>
           </div>
@@ -779,7 +1117,7 @@ function Correlation({ run, facts, onEvidence }: { run: DemoRunSnapshot; facts: 
             <LevelBadge level={priority.level} />
             <div className="text-right">
               <p className={`text-[9px] uppercase ${high ? "text-white/45" : "text-faint"}`}>Ward rank</p>
-              <p className="text-[26px] font-semibold tabular">#{priority.rank}</p>
+              <p className="text-[26px] font-semibold tabular">#<CountUp value={priority.rank} /></p>
             </div>
           </div>
         )}
@@ -790,7 +1128,7 @@ function Correlation({ run, facts, onEvidence }: { run: DemoRunSnapshot; facts: 
 
 function Notification({ event, run, onEvidence }: { event: EchoEvent; run: DemoRunSnapshot; onEvidence: (id: string) => void }) {
   return (
-    <section className="notification-arrive border-t border-[#d7b3aa] bg-[#fff9f7] p-6 md:p-9" aria-live="assertive">
+    <section data-stage="4" className="notification-arrive scroll-mt-[116px] border-t border-[#d7b3aa] bg-[#fff9f7] p-6 md:p-9" aria-live="assertive">
       <div className="flex items-start gap-4">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f3ded8] text-[var(--lvl-high)]"><Bell size={18} /></span>
         <div className="flex-1">
@@ -798,9 +1136,18 @@ function Notification({ event, run, onEvidence }: { event: EchoEvent; run: DemoR
           <h3 className="mt-2 text-[20px] font-medium">{run.patient?.displayId ?? "P-014"} requires reassessment</h3>
           <p className="mt-2 text-[12px] leading-relaxed text-dim">{event.quote}</p>
           <div className="mt-4 flex flex-wrap gap-3">
-            {event.causedByEventIds?.map((id) => (
-              <button key={id} onClick={() => onEvidence(id)} className="border-b border-[#c58f82] text-[10px] text-[var(--lvl-high)]">Caused by {id}</button>
-            ))}
+            <StaggerList step={0.08} variant="rise">
+              {event.causedByEventIds?.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onEvidence(id)}
+                  className="motion-chip text-[10px] font-medium text-[var(--lvl-high)]"
+                >
+                  Caused by {id}
+                </button>
+              )) ?? []}
+            </StaggerList>
           </div>
         </div>
         <span className="text-[9px] font-bold uppercase tracking-wide text-faint">ECHO IN-APP · not SMS</span>
@@ -890,7 +1237,9 @@ function Context({ run, transcript, facts }: { run: DemoRunSnapshot; transcript:
           </div>
           <div className="text-right">
             <p className="text-[9px] uppercase text-faint">Ward rank</p>
-            <p className="mt-1 text-[28px] font-semibold tabular">#{run.priority?.rank ?? "—"}</p>
+            <p className="mt-1 text-[28px] font-semibold tabular">
+            #<CountUp value={run.priority?.rank ?? null} />
+          </p>
           </div>
         </div>
         {run.priority && run.initialRank !== run.priority.rank && <p className="queue-rise mt-3 border-t border-line pt-3 text-[10px] font-semibold text-[var(--accent)]">Actual movement · #{run.initialRank} → #{run.priority.rank}</p>}
@@ -1158,40 +1507,154 @@ function AttributionBanner({ attribution }: { attribution: DemoAttribution | nul
   );
 }
 
+/**
+ * The seam between two stages.
+ *
+ * The line DRAWS downward the moment the downstream stage becomes real, which
+ * is the only moment it is allowed to: an inactive connector stays a flat grey
+ * rule, because a moving line between two boxes reads as data flowing and no
+ * data has flowed yet.
+ */
 function FlowConnector({ active, label }: { active: boolean; label: string }) {
   return (
-    <div className="relative flex min-h-16 items-center justify-center border-y border-line bg-[#f8faf9] px-4 py-3">
-      <span className={`absolute top-0 h-full w-px ${active ? "causal-line bg-[var(--accent)]" : "bg-line"}`} />
-      <span className={`z-10 flex items-center gap-2 bg-[#f8faf9] px-3 text-center text-[10px] font-semibold ${active ? "text-[var(--accent)]" : "text-faint"}`}><ArrowDown size={11} />{label}</span>
+    <div className="relative flex min-h-16 items-center justify-center overflow-hidden border-y border-line bg-[#f8faf9] px-4 py-3">
+      {active ? (
+        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 2 64" preserveAspectRatio="none" aria-hidden="true">
+          <DrawIn d="M1,0 L1,64" stroke="var(--accent)" strokeWidth={1.5} fill="none" duration={0.7} vectorEffect="non-scaling-stroke" />
+        </svg>
+      ) : (
+        <span className="absolute top-0 h-full w-px bg-line" aria-hidden="true" />
+      )}
+      <span
+        className={`z-10 flex items-center gap-2 bg-[#f8faf9] px-3 text-center text-[10px] font-semibold transition-colors duration-500 ${
+          active ? "text-[var(--accent)]" : "text-faint"
+        }`}
+      >
+        <ArrowDown size={11} className={active ? "motion-breathe" : undefined} />
+        {label}
+      </span>
     </div>
   );
 }
 
-function SignalReceipt({ signal, inverse, onEvidence }: { signal: TrendSignal; inverse: boolean; onEvidence: (id: string) => void }) {
+/**
+ * One cited trend, with the persistence drawn rather than asserted.
+ *
+ * "4h persistence · 5 samples" is the sentence the engine produces; the track
+ * under it is that same sentence a judge can read at a glance, including the
+ * gates the run has NOT crossed. The little trace is the same samples the
+ * priority engine folded -- if it is empty, the signal was cited on evidence
+ * this run did not append, and the empty box says so instead of inventing one.
+ */
+function SignalReceipt({
+  signal,
+  points,
+  inverse,
+  onEvidence,
+}: {
+  signal: TrendSignal;
+  points: ChartPoint[];
+  inverse: boolean;
+  onEvidence: (id: string) => void;
+}) {
   return (
-    <div className={`border p-4 ${inverse ? "border-white/15 bg-white/5" : "border-line bg-white"}`}>
+    <div className={`border p-4 transition-colors duration-500 ${inverse ? "border-white/15 bg-white/5 hover:border-white/30" : "border-line bg-white hover:border-[#8ba49c]"}`}>
       <p className={`text-[9px] font-bold uppercase tracking-[.14em] ${inverse ? "text-[#8fc5b6]" : "text-[var(--accent)]"}`}>{signal.observation.replace(/_/g, " ")}</p>
-      <p className="mt-3 text-[22px] font-semibold tabular">{signal.baseline ?? "—"} → {signal.current ?? "—"}</p>
-      <p className={`mt-1 text-[10px] ${inverse ? "text-white/55" : "text-dim"}`}>{Math.round(signal.persistenceMs / 3_600_000)}h persistence · {signal.sampleCount} samples</p>
+      <p className="mt-3 flex items-baseline gap-2 text-[22px] font-semibold tabular">
+        <span className={inverse ? "text-white/45" : "text-faint"}>{signal.baseline ?? "—"}</span>
+        <ArrowDown size={13} className={`-rotate-90 ${inverse ? "text-white/40" : "text-faint"}`} />
+        <CountUp value={signal.current} />
+      </p>
+      <PersistenceTrack
+        className="mt-3"
+        persistenceMs={signal.persistenceMs}
+        sampleCount={signal.sampleCount}
+        inverse={inverse}
+      />
+      <StreamingLineChart
+        className="mt-3"
+        points={points}
+        label="samples folded"
+        baseline={signal.baseline}
+        concerning={signal.concerning}
+        height={78}
+        showNow={false}
+        theme={inverse ? "dark" : "light"}
+        color={inverse ? "#79c9b4" : undefined}
+        emptyLabel="Cited from earlier history"
+      />
       <div className="mt-3 flex flex-wrap gap-2">
-        {signal.evidenceEventIds.map((id) => <button key={id} onClick={() => onEvidence(id)} className={`border-b text-[9px] ${inverse ? "border-white/30 text-white/70" : "border-[#8ba49c] text-[var(--accent)]"}`}>{id}</button>)}
+        {signal.evidenceEventIds.map((id) => (
+          <EvidenceChip key={id} id={id} inverse={inverse} onSelect={onEvidence} />
+        ))}
       </div>
     </div>
   );
 }
 
 function TinyVital({ label, value }: { label: string; value: number | null }) {
-  return <div><p className="text-[9px] font-bold uppercase text-faint">{label}</p><p className="mt-1 text-[13px] font-semibold tabular">{value ?? "—"}</p></div>;
+  return (
+    <div>
+      <p className="text-[9px] font-bold uppercase text-faint">{label}</p>
+      <p className="mt-1 text-[13px] font-semibold tabular">
+        <CountUp value={value} duration={520} />
+      </p>
+    </div>
+  );
+}
+
+/** Every numeric sample of one observation in this run, oldest first. */
+function pointsFor(events: EchoEvent[], observation: string): ChartPoint[] {
+  return events
+    .filter((event) => event.observation === observation && typeof event.value === "number")
+    .map((event) => ({ t: event.ts, value: event.value as number, id: event.id }))
+    .sort((a, b) => a.t - b.t);
+}
+
+/** An event id, rendered as what it is: a way into the log. */
+function EvidenceChip({ id, inverse, onSelect }: { id: string; inverse?: boolean; onSelect: (id: string) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(id)}
+      className={`motion-chip text-[9px] font-medium ${inverse ? "text-white/70 hover:text-white" : "text-[var(--accent)] hover:text-ink"}`}
+    >
+      {id}
+    </button>
+  );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
   return <div className="border-l border-line pl-3"><p className="text-[9px] font-bold uppercase tracking-wide text-faint">{label}</p><p className="mt-1 break-all text-[10px] font-medium text-dim">{value}</p></div>;
 }
 
+/**
+ * The microphone level.
+ *
+ * When capture is live every bar height is a real analyser bin. When it is not,
+ * the bars BREATHE on a fixed idle animation and drop to a fifth of their
+ * opacity -- the surface must never look like it is hearing something when no
+ * stream is open, so idle motion is deliberately slow, dim and obviously not
+ * speech-shaped.
+ */
 function Wave({ levels, active }: { levels: number[]; active: boolean }) {
   return (
     <div className="flex h-14 items-center gap-[3px]" aria-label={active ? "Live microphone level" : "Microphone inactive"}>
-      {levels.map((level, index) => <span key={index} className={`w-[3px] rounded-full bg-[var(--accent)] transition-[height] duration-75 ${active ? "opacity-90" : "opacity-20"}`} style={{ height: `${Math.max(5, Math.round(level * 52))}px` }} />)}
+      {levels.map((level, index) => (
+        <span
+          key={index}
+          className={`w-[3px] rounded-full bg-[var(--accent)] ${
+            active ? "opacity-90 transition-[height] duration-75" : "motion-meter-idle opacity-20"
+          }`}
+          style={
+            {
+              height: active ? `${Math.max(5, Math.round(level * 52))}px` : "44px",
+              "--motion-delay": `${index * 0.09}s`,
+              "--motion-meter-duration": `${2.8 + (index % 5) * 0.32}s`,
+            } as CSSProperties
+          }
+        />
+      ))}
     </div>
   );
 }

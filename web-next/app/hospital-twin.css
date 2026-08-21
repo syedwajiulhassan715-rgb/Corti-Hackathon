@@ -1,0 +1,245 @@
+/*
+  The hospital twin's surface treatment, in one file.
+
+  Imported by components/hospital/HospitalTwin.tsx and by nothing else, the
+  same way ward-twin.css belongs to the floor plan. This is the establishing
+  shot: a building model seen at dusk, dark so the ward you fly into can be the
+  bright thing in the frame.
+
+  THE RULE. This drawing is a backdrop. Every animation here is slow, low
+  contrast, and loops without a beat you could tap along to -- ambient life at
+  building scale, not a dashboard demanding to be read. Anything that carries
+  clinical state (the live ward's accent, its counts) is rendered by the
+  component from real data, never by a class in here.
+
+  Colours are the dark-green family named in the design law. No neon.
+*/
+
+.htwin {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 8%, #12332c 0%, #0c231e 46%, #071613 100%);
+
+  --h-line: #7fb6a6;
+  --h-plate: #163730;
+  --h-plate-live: #1b463c;
+  --h-face: #0e2620;
+  --h-face-dark: #091b17;
+  --h-text: #d6e6df;
+  --h-text-dim: #7f9c93;
+  --h-glow: #71aa9b;
+}
+
+.htwin-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Strokes stay the same weight in pixels however far the viewBox has zoomed,
+   so the model keeps the line quality of a drawing instead of turning into
+   fat outlines the moment the camera pushes in. */
+.htwin-svg [stroke] {
+  vector-effect: non-scaling-stroke;
+}
+
+.htwin-plate {
+  transition: opacity 220ms linear, filter 220ms linear;
+}
+
+.htwin-label,
+.htwin-floor-label {
+  font-family: var(--font-sans);
+  fill: var(--h-text);
+  pointer-events: none;
+  user-select: none;
+}
+
+.htwin-floor-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  fill: var(--h-text-dim);
+}
+
+.htwin-zone-name {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.htwin-zone-sub {
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  fill: var(--h-text-dim);
+}
+
+.htwin-ward-name {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.htwin-ward-sub {
+  font-size: 4.6px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  fill: var(--h-text-dim);
+}
+
+.htwin-room-id {
+  font-size: 4.4px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  fill: var(--h-text-dim);
+}
+
+/* ------------------------------------------------------------- ambient life */
+
+/* A zone breathes at a rate set from its acuity. Opacity and transform only --
+   nothing here triggers layout, and nothing repaints a filter per frame. */
+@keyframes htwin-breathe {
+  0%, 100% { opacity: 0.16; transform: scale(0.86); }
+  50%      { opacity: 0.5;  transform: scale(1.12); }
+}
+
+.htwin-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: htwin-breathe var(--h-period, 7s) cubic-bezier(0.4, 0, 0.4, 1) infinite;
+  animation-delay: var(--h-delay, 0s);
+}
+
+/* Traffic toward the spine. One dash, travelling the length of the thread and
+   fading out before it arrives, so the eye reads movement rather than a
+   marching-ants border. */
+@keyframes htwin-thread {
+  0%   { stroke-dashoffset: var(--h-run, 200); opacity: 0; }
+  18%  { opacity: 0.55; }
+  78%  { opacity: 0.35; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+.htwin-thread {
+  animation: htwin-thread var(--h-period, 9s) linear infinite;
+  animation-delay: var(--h-delay, 0s);
+}
+
+/* The riser: the same traffic, climbing the core between floors. */
+@keyframes htwin-riser {
+  0%   { stroke-dashoffset: 60; opacity: 0; }
+  25%  { opacity: 0.6; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+.htwin-riser-run {
+  animation: htwin-riser var(--h-period, 6s) linear infinite;
+  animation-delay: var(--h-delay, 0s);
+}
+
+/* Daylight. Two skies crossfading over three minutes -- long enough that a
+   judge never sees it move and the room never feels static. */
+@keyframes htwin-daylight {
+  0%, 100% { opacity: 0; }
+  50%      { opacity: 1; }
+}
+
+.htwin-daylight {
+  animation: htwin-daylight 180s ease-in-out infinite;
+}
+
+/* ----------------------------------------------------------------- overlays */
+
+.htwin-legend {
+  position: absolute;
+  left: clamp(14px, 2.2vw, 30px);
+  bottom: clamp(12px, 2vw, 24px);
+  max-width: 42ch;
+  pointer-events: none;
+  font-family: var(--font-sans);
+}
+
+.htwin-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #a9c6bc;
+}
+
+.htwin-legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--h-glow);
+  box-shadow: 0 0 0 3px rgba(113, 170, 155, 0.16);
+}
+
+/* The honesty line. It is not a footnote in a lighter grey than the rest: it
+   sits directly under the live badge, in the same block, because a synthetic
+   floor that looks monitored is the one lie this drawing could tell. */
+.htwin-legend-note {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #86a49a;
+}
+
+.htwin-legend-note b {
+  font-weight: 600;
+  color: #cfe2da;
+}
+
+.htwin-scale {
+  position: absolute;
+  right: clamp(14px, 2.2vw, 30px);
+  bottom: clamp(12px, 2vw, 24px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #6f8b82;
+}
+
+.htwin-scale-bar {
+  width: 54px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #6f8b82);
+}
+
+@media (max-width: 640px) {
+  .htwin-legend { max-width: 30ch; }
+  .htwin-scale { display: none; }
+}
+
+/*
+  Reduced motion takes the composition, not the drawing. Everything above is
+  decoration bound to no clinical fact, so removing it costs nothing: the
+  building, its labels and the live ward's state all still render.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .htwin-pulse,
+  .htwin-thread,
+  .htwin-riser-run,
+  .htwin-daylight {
+    animation: none !important;
+  }
+  .htwin-pulse { opacity: 0.3; }
+  .htwin-thread { opacity: 0.22; stroke-dashoffset: 0; }
+  .htwin-riser-run { opacity: 0.25; stroke-dashoffset: 0; }
+  .htwin-daylight { opacity: 0.5; }
+  .htwin-plate { transition: none; }
+}

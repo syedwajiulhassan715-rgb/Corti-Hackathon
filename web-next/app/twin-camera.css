@@ -1,0 +1,145 @@
+/*
+  Camera surface for TwinCamera.
+
+  Kept out of globals.css deliberately: this file describes ONE mechanism and is
+  imported by the component that owns it, so nothing here can leak into the ward
+  board or the patient record. Colour comes from the tokens in globals.css --
+  no new palette is invented here.
+
+  Every value that moves is set from JavaScript, per frame, on transform /
+  opacity / filter only. There is not one animatable width, height, top or left
+  in this file, because the flight must never cost a layout pass on a projector.
+*/
+
+.tc {
+  position: relative;
+  isolation: isolate;
+}
+
+/* While the camera is still moving, the destination is clipped to the frame:
+   an over-scaled page must not spill a scrollbar into the shot. */
+.tc[data-phase="establishing"],
+.tc[data-phase="flying"] {
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------- the wide shot */
+
+.tc-establishing {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  background: var(--canvas);
+  /* The establishing layer is composited, not repainted. The stage inside it is
+     what actually transforms; this layer only fades and (briefly) blurs. */
+  will-change: opacity, filter;
+  contain: layout paint;
+}
+
+.tc-stage {
+  position: absolute;
+  inset: 0;
+  /* 0 0 makes the JS transform a straightforward camera: translate the focus
+     point to centre-frame, then scale about the same origin. Any other origin
+     and the two operations fight each other. */
+  transform-origin: 0 0;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* ----------------------------------------------------------------- the chrome */
+
+/* Caption and escape hatch sit OUTSIDE the transformed stage on purpose: the
+   camera magnifies the world, never the interface that lets you leave it. */
+.tc-chrome {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 61;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 20px 22px;
+  pointer-events: none;
+}
+
+.tc-label {
+  max-width: 46ch;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1.6;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.tc-skip {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  backdrop-filter: blur(6px);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.tc-skip:hover {
+  color: var(--ink);
+  border-color: var(--faint);
+}
+
+.tc-skip-key {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--faint);
+}
+
+/* --------------------------------------------------------- the landing ground */
+
+.tc-destination {
+  transform-origin: 50% 42%;
+  /* Slightly above centre. The eye reads a landing as level when the horizon
+     settles a little high, the way a camera crane stops. */
+  will-change: transform, opacity;
+}
+
+/* Once landed, every hint of the camera is gone: no compositing layer, no
+   transform, and therefore no containing block for anything position:fixed
+   inside the destination -- a sticky ward header has to keep working. */
+.tc[data-phase="arrived"] .tc-destination {
+  will-change: auto;
+  transform: none;
+}
+
+/*
+  Reduced motion is handled in TypeScript, not here: the component renders the
+  destination directly and never mounts the wide shot at all. This block is only
+  the belt to that braces -- if a flight were ever somehow in progress when the
+  preference flips, it stops looking like one immediately.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .tc-establishing {
+    filter: none !important;
+  }
+  .tc-skip {
+    transition: none;
+  }
+}

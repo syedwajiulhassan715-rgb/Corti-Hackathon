@@ -11,7 +11,7 @@ import type { AddressInfo } from "node:net";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { createServer, DEMO_T0, parseUntil, wardResponse } from "./index.ts";
+import { createServer, DEMO_T0, parseUntil, PREVIOUS_LEVEL_LOOKBACK_MS, wardResponse } from "./index.ts";
 import { SPEECH, OBSERVATION } from "../engines/rules/patient.rules.ts";
 import type { Event } from "../contracts/index.ts";
 import { EventLog } from "../log/store.ts";
@@ -176,6 +176,60 @@ test("parseUntil distinguishes absent from invalid", () => {
   assert.equal(parseUntil("-1"), null);
   assert.equal(parseUntil("1.5"), null);
   assert.equal(parseUntil("later"), null);
+});
+
+/**
+ * The ward board reports what each patient's level WAS, not only what it is.
+ *
+ * The board used to hardcode previousLevel: null, so the floor plan could show
+ * that a bed was lit but never that it had just changed. The fix is a second
+ * fold one lookback back -- not a remembered map -- so this asserts both that
+ * the delta appears AND that it is still a pure function of (events, now):
+ * the same request twice is the same answer, and the previous level at a step
+ * is exactly the level the board itself served one step earlier.
+ */
+test("the ward board reports the level each patient climbed FROM", async () => {
+  const log = new EventLog();
+  for (const input of wardEvents({ startTs: DEMO_T0, stepMs: PREVIOUS_LEVEL_LOOKBACK_MS })) {
+    log.append(input);
+  }
+  const server = createServer({ events: log.all(), clock: () => DEMO_T0 });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  const base = `http://127.0.0.1:${port}`;
+
+  const board = async (step: number): Promise<Map<string, { level: string; previousLevel: string | null }>> => {
+    const until = DEMO_T0 + step * PREVIOUS_LEVEL_LOOKBACK_MS;
+    const payload = (await (await fetch(`${base}/api/ward?until=${until}`)).json()) as {
+      queue: readonly { patientId: string; level: string; previousLevel: string | null }[];
+    };
+    return new Map(payload.queue.map((row) => [row.patientId, row]));
+  };
+
+  try {
+    const [step1, step2, step4] = [await board(1), await board(2), await board(4)];
+
+    // A patient who climbed across the lookback reports the LOWER prior level.
+    assert.equal(step2.get("elena_petrova")?.level, "PERSISTING_CONCERN");
+    assert.equal(step2.get("elena_petrova")?.previousLevel, "WATCH");
+    assert.equal(step4.get("elena_petrova")?.level, "HIGH");
+    assert.equal(step4.get("elena_petrova")?.previousLevel, "PERSISTING_CONCERN");
+
+    // Not a remembered map: the prior level a step reports is exactly the
+    // level the board served one step earlier, for every patient on it.
+    for (const [patientId, row] of step2) {
+      assert.equal(row.previousLevel, step1.get(patientId)?.level ?? null, `previous level for ${patientId}`);
+    }
+
+    // A patient who did not move reports no change rather than a phantom one.
+    assert.equal(step2.get("jane_smith")?.level, "GREEN");
+    assert.equal(step2.get("jane_smith")?.previousLevel, "GREEN");
+
+    // Still pure: same moment twice, same answer.
+    assert.deepEqual([...(await board(2))], [...step2]);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
 test("wardResponse is the same shape the endpoint serves", () => {

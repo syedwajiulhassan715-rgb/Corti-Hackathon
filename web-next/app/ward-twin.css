@@ -1,0 +1,181 @@
+/*
+  The twin's motion, in one file.
+
+  Imported by components/WardFloorPlan.tsx, deliberately not by globals.css:
+  nothing here belongs to any other screen, and a ward board's animation budget
+  is not something the rest of the app should inherit.
+
+  THE RULE THIS FILE OBEYS: motion carries state or it does not exist. Every
+  animation below is bound to a clinical fact -- how fast a bed's trace runs,
+  whether a room is escalating, whether a route to the station is active. There
+  is no ambient shimmer, because on a display that hangs on a ward wall for
+  twelve hours, decoration becomes noise and noise becomes ignored.
+
+  Durations are long and eases are flat. A hospital tolerates a slow breath; it
+  does not tolerate a bounce.
+*/
+
+.twin {
+  --twin-floor: #e9edea;
+  --twin-corridor: #dfe5e1;
+  --twin-room: #ffffff;
+  --twin-wall: #26332f;
+}
+
+.twin-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* ------------------------------------------------------------------ rooms */
+
+/*
+  The focus lift is a SCALE, not a translate. Sliding a room upward tore it out
+  of the wall it shares with the building envelope and left a white notch in
+  the plan -- the twin visibly coming apart. Growing it 2% about its own centre
+  keeps every wall joined and still reads as the room coming forward, which is
+  the whole point of the gesture.
+*/
+.twin-room {
+  cursor: pointer;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 0.42s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.32s ease;
+}
+.twin-room:focus { outline: none; }
+.twin-room:hover,
+.twin-room:focus-visible { transform: scale(1.022); }
+.twin-room.is-selected { transform: scale(1.028); }
+
+.twin-room .twin-room-floor {
+  transition: fill 0.4s ease, stroke-opacity 0.4s ease;
+}
+.twin-room:hover .twin-room-floor,
+.twin-room.is-selected .twin-room-floor {
+  filter: url(#twin-lift);
+}
+
+.twin-room.is-dimmed { opacity: 0.24; }
+.twin-room.is-empty { cursor: default; }
+
+/* The trace sharpens on attention: thinner and paler until you look at it. */
+.twin-trace { opacity: 0.82; transition: opacity 0.35s ease; }
+.twin-room:hover .twin-trace,
+.twin-room.is-selected .twin-trace { opacity: 1; }
+
+.twin-room:focus-visible .twin-focus-ring { opacity: 1; }
+.twin-focus-ring { opacity: 0; transition: opacity 0.2s ease; }
+
+/* ------------------------------------------------------- the living trace */
+
+/*
+  One period of the waveform is translated by exactly one period, forever, so
+  the loop is seamless and no JavaScript runs per frame. The shift and the
+  duration are set inline from the patient's own level.
+*/
+@keyframes twin-trace-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(var(--twin-shift, -100px)); }
+}
+.twin-trace-run {
+  animation: twin-trace-scroll var(--twin-seconds, 6s) linear infinite;
+  will-change: transform;
+}
+
+/* --------------------------------------------------------- escalation halo */
+
+/*
+  A room that has risen off GREEN grows a ring. ~1.2s, and it repeats rather
+  than firing once, because a nurse walking past the display three minutes
+  later must still be able to see which room is asking for them.
+*/
+@keyframes twin-halo {
+  0%   { opacity: 0.5; transform: scale(0.985); }
+  70%  { opacity: 0;   transform: scale(1.02); }
+  100% { opacity: 0;   transform: scale(1.02); }
+}
+.twin-halo {
+  animation: twin-halo 1.25s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------ corridor flow */
+
+/*
+  When a patient rises above GREEN, a route lights up from their door to the
+  nurse station. It is the escalation, drawn as distance: the board shows you
+  where the work is and where it has to be taken.
+*/
+@keyframes twin-flow-move {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -18; }
+}
+.twin-flow {
+  stroke-dasharray: 5 13;
+  animation: twin-flow-move 1.55s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes twin-station-breathe {
+  0%, 100% { opacity: 0.16; }
+  50%      { opacity: 0.05; }
+}
+.twin-station-glow { animation: twin-station-breathe 3.6s ease-in-out infinite; }
+
+/* ------------------------------------------------------------- tether label */
+
+@keyframes twin-tether-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.twin-tether {
+  animation: twin-tether-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  pointer-events: none;
+}
+
+/* ----------------------------------------------------------- telemetry strip */
+
+@keyframes twin-sweep {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.twin-sweep {
+  animation: twin-sweep 4s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.twin-tabular { font-variant-numeric: tabular-nums; }
+
+/* --------------------------------------------------------------- reduced motion */
+
+/*
+  globals.css already collapses every duration, which leaves an infinite
+  animation frozen at its END state -- for the trace that is a full period of
+  offset, which is harmless but arbitrary. Turning them off outright is the
+  honest fallback: a still trace, a static ring, a solid route line. Every
+  piece of state above is also carried by colour AND a word, so nothing is
+  lost when the motion is.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .twin-trace-run,
+  .twin-halo,
+  .twin-flow,
+  .twin-station-glow,
+  .twin-sweep,
+  .twin-tether {
+    animation: none !important;
+  }
+  .twin-trace-run { transform: translateX(0) !important; }
+  .twin-halo { opacity: 0.4 !important; }
+  .twin-flow { stroke-dasharray: none !important; opacity: 0.5; }
+  .twin-room,
+  .twin-room:hover,
+  .twin-room.is-selected { transform: none !important; }
+}
