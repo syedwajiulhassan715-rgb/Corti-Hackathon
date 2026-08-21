@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/readme/echo-logo.png" alt="ECHO logo — a longitudinal signal radiating through patient history" width="150">
+
 # ECHO
 
 ### Every Clinical Observation
@@ -18,7 +20,7 @@ ECHO is a longitudinal ward command center that turns routine nursing observatio
 </div>
 
 <p align="center">
-  <img src="docs/assets/readme/hero-ward-command-center.png" alt="ECHO ward command center showing the spatial ward view, Elena Petrova's longitudinal evidence, and an explainable priority change" width="1000">
+  <img src="docs/assets/readme/hero-live-pipeline.png" alt="ECHO live clinical pipeline showing the encounter-to-action five-minute story" width="1100">
 </p>
 
 > **Synthetic clinical prototype.** Every patient, device reading, staff record, and appointment slot in the demo is synthetic. ECHO is not a medical device and must not be used for clinical decisions.
@@ -42,6 +44,64 @@ The product follows the nurse's existing workflow instead of asking them to trig
 - **Prepares—not executes—the next action** — ECHO checks fixture-backed staff and slot availability, prepares a reassessment or escalation, and waits for a human to approve or reject it.
 - **Replays the truth at any moment** — projections can be reconstructed at time `T`, making the complete decision path auditable.
 
+## How patients are prioritized
+
+ECHO does not use an LLM-generated risk score. The ward order is produced by deterministic rules in [`src/engines/rules/priority.rules.ts`](src/engines/rules/priority.rules.ts) and [`src/engines/prioritization.ts`](src/engines/prioritization.ts). Every component carries the event IDs that support it.
+
+### 1. Detect change against the patient's own baseline
+
+A value is considered a concerning trend only after at least two samples show a clinically configured change in the worsening direction. One isolated reading is never treated as a trend.
+
+| Signal | Worsening direction | Concerning change from personal baseline |
+| --- | --- | ---: |
+| Systolic blood pressure | Rising | `+10 mmHg` |
+| Diastolic blood pressure | Rising | `+6 mmHg` |
+| Heart rate | Rising | `+15 bpm` |
+| Oxygen saturation | Falling | `−3 percentage points` |
+| Temperature | Rising | `+0.5 °C` |
+| Respiratory rate | Rising | `+4 breaths/min` |
+
+The prototype expects a new observation every six hours. A missing observation becomes an overdue signal after six hours, but only within the active-monitoring window of 24 hours; older historical silence is not misrepresented as a current care gap.
+
+### 2. Apply the delayed-trigger ladder
+
+| Level | Deterministic gate |
+| --- | --- |
+| `GREEN` | No concerning trend signal |
+| `WATCH` | At least one concerning signal; noticing is allowed without concluding |
+| `PERSISTING_CONCERN` | At least 2 agreeing signals, persisting for 2 hours, supported by at least 3 samples **or** a grounded speech fact |
+| `HIGH` | At least 3 agreeing signals, persisting for 4 hours, supported by at least 4 samples |
+| `CRITICAL` | At least 4 agreeing signals, persisting for 8 hours, supported by at least 5 samples **or** a defined emergency threshold |
+
+Speech can justify leaving `WATCH` for `PERSISTING_CONCERN`, but it cannot repeatedly carry the patient to `HIGH` or `CRITICAL`; those higher rungs require worsening numeric evidence over time. When a gate is close but not met, ECHO records the missing condition in **Why not earlier** instead of silently withholding the reason.
+
+Defined emergency readings bypass the persistence ladder:
+
+| Emergency condition | Immediate result |
+| --- | --- |
+| SpO₂ `≤ 88%` | `CRITICAL` |
+| Systolic blood pressure `≥ 200 mmHg` | `CRITICAL` |
+| Heart rate `≥ 150 bpm` or `≤ 35 bpm` | `CRITICAL` |
+| Respiratory rate `≥ 35 breaths/min` | `CRITICAL` |
+
+### 3. Rank the ward with an evidence receipt
+
+The ladder level is always the primary ordering key. Within the same level, ECHO adds transparent evidence points:
+
+| Evidence component | Points |
+| --- | ---: |
+| Each concerning trend | `+4` |
+| Each agreeing signal after the first | `+6` |
+| Persistence | `+2` per hour, capped at `24` |
+| Each overdue observation | `+5` |
+| Each unresolved planned task | `+3` |
+| Each first-class care gap | `+6` |
+| Time since the chart was last updated | `+1` per hour, capped at `10` |
+| Each grounded speech fact | `+10` |
+| Defined emergency jump | `+50` |
+
+Patients are sorted by **level first**, then **evidence score**, then stable patient ID as a replay-safe tie-breaker. The ID tie-break has no clinical meaning. These thresholds are prototype rules for synthetic data—not validated clinical protocols.
+
 ### The magic moment
 
 ECHO's strongest behavior is restraint. A single concerning reading becomes memory, not an alert. When later observations persist and agree, the same patient rises to the top of the ward with a receipt showing exactly which evidence crossed the gate.
@@ -49,26 +109,52 @@ ECHO's strongest behavior is restraint. A single concerning reading becomes memo
 ## How it works
 
 ```mermaid
-flowchart LR
-    Nurse["Nurse or clinician"] --> UI["Next.js ward UI<br/>ward · patient · live demo"]
-    UI --> API["Node API<br/>same-origin HTTP"]
-    API --> Log["Append-only event log<br/>source of truth"]
-    Log --> History["Patient history<br/>evidence-backed facts"]
-    History --> Trends["Deterministic trends<br/>baseline · delta · persistence"]
-    History --> Gaps["Care-gap projection<br/>deadlines · missing response"]
-    Trends --> Priority["Priority engine<br/>explicit gates and rules"]
-    Gaps --> Priority
-    Priority --> Queue["Attention queue<br/>Why now · Why not earlier"]
-    Queue --> Agent["Constrained proposal agent"]
-    Agent --> Coordination["Demo coordination adapter<br/>staff · workload · slots"]
-    Agent -. "optional wording" .-> Corti["Corti<br/>Streams · Facts · Coding · Documents"]
-    Coordination --> Proposal["Prepared action"]
-    Corti --> Proposal
-    Proposal --> Human{"Human decision"}
-    Human -->|approve or reject| API
-    UI -->|microphone audio| API
+flowchart TB
+    Nurse["Nurse or clinician"]
+
+    subgraph Capture["1 · Capture"]
+        direction TB
+        UI["Next.js ward UI<br/>ward · patient · live demo"]
+        API["Node API<br/>same-origin HTTP"]
+        Corti["Corti<br/>Streams · Facts · Coding · Documents"]
+    end
+
+    subgraph Memory["2 · Remember and reason"]
+        direction TB
+        Log["Append-only event log<br/>source of truth"]
+        History["Patient history<br/>evidence-backed facts"]
+        Trends["Deterministic trends<br/>baseline · delta · persistence"]
+        Gaps["Care-gap projection<br/>deadlines · missing response"]
+        Priority["Priority engine<br/>explicit gates and rules"]
+        Queue["Attention queue<br/>Why now · Why not earlier"]
+    end
+
+    subgraph Action["3 · Close the care loop"]
+        direction TB
+        Agent["Constrained proposal agent"]
+        Coordination["Demo coordination adapter<br/>staff · workload · slots"]
+        Proposal["Prepared action"]
+        Human{"Human decision"}
+    end
+
+    Nurse --> UI
+    UI --> API
     API -->|live clinical capture| Corti
+    API -->|structured observations| Log
     Corti -->|transcript · facts · codes| Log
+    Log --> History
+    History --> Trends
+    History --> Gaps
+    Trends --> Priority
+    Gaps --> Priority
+    Priority --> Queue
+    Queue --> Agent
+    Agent --> Coordination
+    Agent -. "optional wording" .-> Corti
+    Coordination --> Proposal
+    Corti -. "generated rationale" .-> Proposal
+    Proposal --> Human
+    Human -->|approve or reject| API
 ```
 
 The event log is the only source of truth. Patient history, trends, priority, care gaps, proposals, and ward state are projections from events at an explicit time. Corti enriches the record; deterministic TypeScript owns clinical state; a human owns workflow-changing decisions.
