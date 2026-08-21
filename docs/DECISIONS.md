@@ -61,16 +61,77 @@ O1  CLOSED 2026-08-20 by V1 RESOLVED. Diarization separates two voices on a mixe
     speaker is the fallback because the clinician opens the encounter in every script in
     CLINICAL §8. Both are stated in the result so the UI can show which one fired, and
     an unresolved assignment stays unresolved rather than guessing.
-    STATUS: decided, NOT YET IMPLEMENTED. pipeline/roles.ts still ships question-density
-    with a clinical-vocabulary tie-break, and is known to invert on
-    fixtures/audio/test_twovoice_01. Do not demo role labels until it is rewritten.
+    STATUS: superseded by D11. The v2 golden path uses the verified cached
+    interaction and evidence pipeline; role assignment remains conservative and
+    unresolved speakers are never guessed.
 
-## Open
-O2  V3 MCP cost decides whether dispatch is a real call or a logged intent.
-O3  Occupancy inferred from active sessions, or manual toggle fallback.
+## Superseded v1 questions
+O2  Dispatch cost is outside the v2 golden path.
+O3  Occupancy inference is outside the v2 golden path.
 O4  Does a single parameter scoring 3 with no speech belong at RED-URGENT on the number
     alone? CLINICAL §2 bands it RED-URGENT, but D10 forbids feed-only escalation below
     the emergency line, so the engine currently rounds it up to RED-EMERGENCY. Three
     answers are possible: leave it at RED-EMERGENCY, carve a second numeric exception so
     the number alone can reach RED-URGENT, or require speech and let it sit at GREEN
-    until someone speaks. Pending the clinician.
+    until someone speaks. Superseded by the v2 longitudinal model in D11.
+
+---
+
+## D11 — Pivot to longitudinal patient intelligence (2026-08-21)
+
+**Decision.** ECHO v1 (two signals per room, dispatch to whoever is free) is
+superseded. ECHO v2 watches a patient's trajectory over time. Authority: the
+project owner, who has explicit authority to change the rules. See docs/GOALS.md
+for the brief and docs/SPEC.md for the resulting spec.
+
+**What was killed and deleted.** All were header-comment shells with zero
+implementation, so nothing working was lost:
+
+    src/agents/{dispatch,mcp,slotMatch}.ts
+    src/engines/{coordination,scoring,taskMemory,wardRound}.ts
+    src/engines/rules/{coordination,tasks,wardRound,weights}.*.ts
+    src/projections/{queue,dispatchView,summary24}.ts
+    src/contracts/{tasks,scheduling,state}.ts
+    src/world/{roster,inventory}.ts
+    src/corti/dictate.ts
+
+**What survives, deliberately.** The event log, replay, the evidence model, the
+Corti auth/coding/streaming path, roles, grounding, patientState and the ward
+and history projections. The pivot reuses all of it.
+
+**The one product law that changed.** v1: "Yellow or red requires at least one
+speech event in its evidence. Numbers corroborate, never conclude." v2 permits
+escalation on multi-signal numeric agreement that has persisted over time. A
+four-day corroborated BP trend with nobody speaking is precisely the case ECHO
+exists to catch, and the v1 law made it unreportable. A single reading still
+never concludes, so the anti-crying-wolf property is preserved by *persistence
+and agreement* rather than by requiring speech.
+
+**Contract change.** `Event.patientId` added as a required field, placed
+immediately after `ts`. The slug of the chart directory, not the MRN: readable
+in a JSONL log, already the key `world/patients` loads by, and unmistakable for
+a real identifier. `GroundedFact.patientId` is taken from the supporting event,
+never from the candidate, so a mis-addressed proposal cannot launder itself
+through the gate. 177 tests and the typecheck pass after the migration.
+
+## D12 — Corti tenant capability probe (2026-08-21)
+
+**Finding.** `POST /v2/tools/facts/` and `POST /v2/tools/generate/` return 403
+on this tenant. The standalone facts and generation tools are not scoped to us.
+
+**Consequence.** All fact and generation work is interaction-scoped:
+`/v2/interactions/{id}/facts/` and `/v2/interactions/{id}/documents/`, both
+verified working. This is the better path regardless — a Corti interaction
+carries `patient` natively, so patient identity is Corti's own model rather
+than something ECHO bolts on. One interaction per nurse round is the unit of
+work.
+
+**Also found.** `GET /v2/factgroups/` (no hyphen; the hyphenated path 403s)
+returns 20 clinical fact groups. That is Corti's own ontology and ECHO adopts
+it as its fact taxonomy rather than inventing one. Document generation against
+`corti-nursing-note` was verified end to end and produced correct trend
+comparisons unprompted, at ~0.024 credits per three-section note.
+
+Every verified field name is recorded in `.claude/skills/corti-api/SKILL.md`,
+which the API law now points at. That skill was referenced by CLAUDE.md from
+the start but had never existed.

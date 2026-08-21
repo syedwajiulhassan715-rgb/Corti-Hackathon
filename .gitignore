@@ -1,4 +1,7 @@
 node_modules
+web-next/.next/
+web-next/out/
+web-next/tsconfig.tsbuildinfo
 .env
 .cache/
 dist

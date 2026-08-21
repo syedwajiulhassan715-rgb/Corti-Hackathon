@@ -3,12 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=22" },
   "scripts": {
     "dev": "tsx src/main.ts",
-    "test": "node --import tsx --test src/corti/coding.test.ts src/corti/stream.test.ts src/corti/transcribe.test.ts src/engines/patientState.test.ts src/log/replay.test.ts src/log/store.test.ts src/pipeline/grounding.test.ts src/pipeline/observations.test.ts src/pipeline/roles.test.ts src/projections/history.test.ts src/projections/ward.test.ts src/server/index.test.ts",
+    "test": "node --experimental-strip-types --test --test-concurrency=1 \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
+    "build": "npm --prefix web-next run build",
+    "lint": "tsc --noEmit && npm --prefix web-next exec tsc -- --noEmit",
+    "verify": "npm run typecheck && npm test && npm run build",
     "stage": "tsx src/main.ts",
-    "demo": "node --import tsx src/server/index.ts"
+    "demo": "node --import tsx src/server/index.ts",
+    "start": "node --experimental-strip-types src/server/index.ts"
   },
   "dependencies": {
     "dotenv": "^17.0.0"

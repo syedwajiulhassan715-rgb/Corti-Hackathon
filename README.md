@@ -1,28 +1,42 @@
-# ECHO
-Smart hospital ward. Three rooms, two live signals each, dispatch to whoever is free.
+# ECHO — Every Clinical Observation
 
-The ward already has monitors for pulse and pressure. We built the monitor for the one
-signal nobody instruments, and everything it knows, it can quote.
+> Most clinical systems remember events. ECHO remembers trajectories.
 
-## What it does
-Ambient speech is the only source of judgement. Every room carries a Patient State and a
-Coordination State. Yellow and red always trace back to a quote, a speaker and a timestamp.
-Tasks derived from what was said are scored deterministically and offered to whoever is
-free; if she declines or the offer times out, the task travels to the next nurse.
-The agent proposes. A human confirms by voice.
+ECHO turns routine nursing observations into an append-only patient history,
+detects persistent multi-signal deterioration, ranks the ward with explicit
+evidence, identifies care gaps, prepares constrained operational actions, and
+waits for human approval.
 
-## Run
-cp .env.example .env      fill Corti credentials
+All included patients, device readings, staff availability, and appointment
+slots are synthetic demo fixtures. Corti is the only clinical AI provider;
+when it is unavailable, the app uses a clearly labelled deterministic fallback.
+
+## Run the complete demo
+
+Requires Node.js 22 or newer.
+
+```text
 npm install
-npm run dev               pipeline + server
-npm run replay            deterministic playback of fixtures/events/demo.jsonl
+npm run verify
+npm start
+```
 
-## Repo
-docs/SPEC.md        what we are building and why
-docs/CONTRACTS.md   the event log and every projection
-docs/LANES.md       who owns what
-docs/DEMO.md        the timed run sheet
-ATTRIBUTIONS.md     everything external we used
+Open `http://localhost:8787/ward/`. Use Reset before every rehearsal. The
+scripted path advances from a calm ward through persistent deterioration,
+care-gap detection, resource preparation, human approval, and exact replay.
 
-## Team
-Team name, number, four members and roles.
+## Core routes
+
+- `/ward/` — attention queue, selected patient, replay, and presenter controls
+- `/patients/elena_petrova/` — standalone longitudinal patient view
+- `/health` — process health and event count
+
+## Architecture
+
+The event log is the source of truth. Patient history, trends, priority, care
+gaps, proposals, and actions are replayable projections. Deterministic code
+decides clinical state; Corti extracts and explains; narrow coordination tools
+prepare workflow; humans approve changes.
+
+See [docs/SPEC.md](docs/SPEC.md), [docs/DECISIONS.md](docs/DECISIONS.md), and
+[docs/LANES.md](docs/LANES.md).

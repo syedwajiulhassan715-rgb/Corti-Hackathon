@@ -1,87 +1,173 @@
-# ECHO
+# ECHO v2
+
+> Superseded SPEC v1 (ward dispatch) on 2026-08-21. See docs/DECISIONS.md D11
+> for what was killed and why. The v1 anchor — two signals per room, dispatch
+> to whoever is free — is gone. What survives is the evidence model, the event
+> log, the Corti path and the honesty law.
 
 ## Problem
-A ward runs two disconnected systems: a plan view of what should happen, and an alarm
-view that fires when a number crosses a threshold. Neither knows what happened in the
-room. A patient says he is more breathless than yesterday; a fraction reaches the record
-and nothing reaches the overview. Meanwhile tasks stall silently. A blood test ordered
-but never booked. A result available but never reviewed. Nobody tracks the gap between
-what was planned and what was done.
+
+A ward's intelligence is trapped in the moment. A nurse takes a blood pressure,
+notes it, and moves on. Tomorrow another nurse takes another one. Nobody holds
+the two together. Deterioration that would be obvious across four days is
+invisible across four separate observations, because no system is watching the
+*trajectory* — only the reading in front of it.
+
+Meanwhile every alerting system on the market fires on a single threshold
+crossing, so it cries wolf, so nobody reads it.
 
 ## Anchor
-For a ward where nobody can see the whole floor at once, we turn what is said in the
-rooms into two live signals per patient, one for their condition and one for whether
-their care is actually moving, and dispatch every resulting task to whoever is free.
 
-## Stage line
-The ward already has monitors for pulse and pressure. We built the monitor for the one
-signal nobody instruments, and everything it knows, it can quote.
+ECHO quietly captures the nurse's normal work — speech, vitals, observations —
+turns it into a patient's longitudinal history automatically, watches that
+history for *persistent, corroborated* change, and ranks who needs attention
+now. A Corti agent proposes the next workflow action. A human approves it.
 
-## Two signals
-PATIENT STATE       green stable, yellow changed and should be checked, red urgent
-COORDINATION STATE  green moving, yellow missing or delayed, red unreviewed or badly late
-Each carries one plain line of explanation. Behind that line sits the quote, speaker,
-timestamp and code. The split separates "the patient changed" from "the system failed".
-No existing ward view does this. It is the core idea.
+## The one sentence that matters
 
-## Inputs
-Speech is the only source of judgement: conversations, bedside checks, handover, family.
-Vitals, NEWS/TOKS, labs, pain scores, movements, orders and results are simulated feeds
-that give the ward body. A number moving with nobody speaking is a yellow prompt to go
-and ask, never a red conclusion.
+**The nurse didn't trigger ECHO. The nurse simply did the job. ECHO connected
+the history.**
 
-## Chain
-S0  Capture         ambient STT, diarize true
-S1  Roles           speaker slots to clinician / patient / nurse
-S2  Candidates      fact extraction, topics only
-S3  Grounding       no attributed segment, no fact
-S4  Coding          three phrasings by three speakers become one signal
-S5  Patient State   deterministic rules over grounded coded facts, corroborated by feeds
-S6  Coordination    task stage ladder: ordered, taken, resulted, reviewed, acted
-S7  Task memory     persists until closed, with reason, owner, urgency, due, delay
-S8  Scoring         urgency, wait, dependency, fit. Doctor's weights.
-S9  Dispatch        offer, timeout, decline, reassign, escalate, preempt with requeue
-S10 Scheduling      agent fits ranked queue into scarce slots, human books
-S11 Generation      24h summary, explanations, escalation packets
-S12 Confirm         dictation, human voice approves, logged in their words
+## The core insight
 
-## Deterministic vs agentic
-Engines, not agents: Patient State, Coordination, task memory, scoring, ward-round order.
-Doctor's rules, every output explainable.
-Genuinely agentic: dispatch matching tasks to free people, slot matching against scarcity.
-Q&A sentence: deterministic scoring, agent proposes the fit, human decides, every step
-cites a quote.
+Every competitor asks *"is this number abnormal?"*
+ECHO asks *"is this patient's own trajectory bending, and does more than one
+signal agree?"*
 
-## 24-hour summary
-Three questions only: what changed, what was done, what still needs to happen.
-Every claim carries evidence. Nothing in the summary that is not in the log.
-projections/summary24 assembles the input, corti/generate produces the text. The
-projection decides what is true; generation decides only how it reads.
+Baseline is **per patient**, never population. 145/90 is unremarkable for a
+population and a large move for someone whose four-day baseline is 128/80.
+That distinction is the entire product.
 
-## Ward round order
-Fixed ladder, doctor's: urgent, deteriorating, waiting on urgent result, dischargeable
-but for one blocker, stable with open tasks, stable and clear. A table lookup, say so.
+## Product law
 
-## Product areas, all load-bearing
-Ambient STT is the only sensory organ. Coding connects comments hours apart by different
-speakers. Generation writes summary, explanations and packets. Agentic dispatches and
-schedules. Dictation closes every action. Remove Corti and this is a dead map.
+Unchanged from v1 except where noted.
 
-## Build order
-Patient State before Coordination. Dispatcher before scheduler. Never let one depend on
-another, so any can be cut at freeze with the story intact.
+- Nothing enters state without a quote, speaker and timestamp.
+- Escalation above WATCH requires **either** a speech event in its evidence
+  **or** multi-signal numeric agreement persisting over time. *(Changed from
+  v1: v1 required speech for any yellow. A four-day corroborated BP trend with
+  no conversation is exactly what ECHO exists to catch, so numbers may now
+  conclude — but only in agreement, and only over time. A single reading still
+  never concludes.)*
+- Fact extraction proposes candidates. Speaker-attributed segments decide.
+- Deterministic scoring. The agent proposes, the human confirms.
+- Nothing a human accepted is silently reassigned.
+- A planned thing nobody discussed becomes a flag with the question to ask,
+  never a guess.
+- **The system waits for sufficient evidence.** A single observation becomes
+  history, not an alert. Only defined emergency conditions skip the ladder.
+
+## Architecture
+
+```
+Nurse's normal work
+   ↓  Corti STT / vitals / observations
+Event Log            (patientId is the primary key)
+   ↓
+Patient History      projections/patientHistory.ts
+   ↓
+Trend Engine         engines/patientTrend.ts
+   ↓
+Priority Engine      engines/prioritization.ts
+   ↓
+Attention Queue
+   ↓
+Corti agent proposes → human approves → action event → back into history
+```
+
+The event log remains the only interface between modules. `engines/` and
+`projections/` are pure functions from events, take `now` as an argument, and
+never read a clock. Only `main.ts` and `server/index.ts` call `Date.now()`.
+
+## The escalation ladder
+
+```
+GREEN → WATCH → PERSISTING_CONCERN → HIGH → CRITICAL
+```
+
+A patient climbs it by accumulating *persistence* and *agreement*, not by
+crossing a line once. Defined emergency conditions jump straight to CRITICAL;
+they are listed as data in `engines/rules/`, not as code.
+
+## Signals the trend engine computes
+
+Per observation, per patient: baseline, current, delta, direction, rate of
+change, persistence (how long the direction has held), duration, multi-signal
+agreement, **missing observations**, and supporting conversation facts.
+
+**Silence is a signal.** A patient nobody has observed in N hours, or a result
+nobody reviewed, is a first-class trend — not an absence of one. No competing
+product does this and it is nearly free from an event log.
+
+## Corti — verified capabilities
+
+See `.claude/skills/corti-api/SKILL.md`. Every field name there was confirmed
+against the live tenant on 2026-08-21.
+
+| Used for | Endpoint |
+|---|---|
+| Ambient STT | audio-bridge websocket + `/v2/interactions/{id}/transcripts/` |
+| Fact taxonomy | `GET /v2/factgroups/` — 20 clinical groups, Corti's own ontology |
+| Facts | `GET/POST /v2/interactions/{id}/facts/` |
+| Medical coding | `POST /v2/tools/coding/` |
+| Generation | `POST /v2/interactions/{id}/documents/` with a published template |
+| Patient identity | `interaction.patient` — native, not bolted on |
+
+**`/v2/tools/facts/` and `/v2/tools/generate/` are 403 on this tenant.** All
+fact and generation work is interaction-scoped. One Corti interaction per nurse
+round, carrying the patient's real identity, is the ECHO unit of work.
+
+No other AI provider. No OpenAI, Anthropic or Gemini on the clinical path.
+
+## Where the agent is and is not allowed
+
+The agent does **not** decide whether a patient is deteriorating. The
+deterministic engine decides that, from the doctor's rule tables.
+
+The agent decides workflow: given trusted patient state, who should handle the
+next task and what action to propose. Every action-changing operation requires
+human approval and becomes an `action` event in the history.
+
+## Patients
+
+The ward is the **11 provided charts** in `fixtures/provided/text/` — real
+organiser fixture data with dated longitudinal vitals, labs and encounters.
+Their charted past is parsed into events. Their future is a deterministic
+forward-simulator, labelled as simulated wherever it surfaces.
+
+Not invented. `robert_okafor` (STEMI → PCI → post-MI HFrEF, four encounters)
+and `elena_petrova` / `aisha_rahman` (explicit care-gap storylines) carry the
+strongest arcs.
+
+## Honesty law
+
+Unchanged. If something is faked, say so in code and on stage. Fake the
+environment, never the Corti path. The bedside monitor is simulated and labelled
+`SIMULATED DEVICE`. The room-to-patient assignment is hardcoded and labelled.
+The Corti calls are real.
 
 ## Scope
-MUST  S0-S7, both signals with explanation and evidence, three rooms, dispatcher with
-      offer, timeout, decline, reassignment, voice confirm, playback scrub, eval table
-NICE  score components visible, slot matching, preemption with requeue, occupancy from
-      active sessions, 24h summary, ward-round order
-KILL  booking without human confirm, learned scores, a second scarce resource, live mic,
-      a second rehearsed scenario, any state change without an utterance behind it
 
-## Gates
-+30m    contracts locked, doctor starts rule table
-Hour 1  V1-V3 answered in VALIDATION.md
-14:00   one conversation, real pipeline, one room changes state, quote visible on real UI
-22:00   both signals, dispatch with reassignment, voice confirm, all off the log
-Fri 12  freeze, then three timed rehearsals.
+**MUST** — patient identity, automatic patient history, the 11-patient ward,
+longitudinal trends, delayed priority escalation, attention queue, evidence on
+every claim, Corti integration, ward UI, patient timeline, working demo.
+
+**SHOULD** — medical coding as enrichment, agentic assignment with approval,
+replay scrubber, generated handoff.
+
+**NICE** — "why not" panel, handover diff, command palette, population view.
+
+**KILL** — coordination signal, dispatcher, scheduler, ward-round order, task
+memory, dictation confirm, live mic, a second scarce resource, any state change
+without an event behind it.
+
+## Acceptance test
+
+`P-002` (elena_petrova) starts GREEN. A nurse records vitals and one sentence.
+History updates automatically; no alert. Advance the simulation three times,
+each adding vitals. The patient climbs WATCH → PERSISTING_CONCERN → HIGH. The
+attention queue moves them to #1. The why-now panel explains it from trends and
+quotes. The agent proposes an action. A human approves. The action becomes an
+event. The timeline contains the whole story.
+
+This runs as an automated test, not a manual checklist.
