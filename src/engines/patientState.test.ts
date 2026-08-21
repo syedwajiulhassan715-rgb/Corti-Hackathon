@@ -31,6 +31,7 @@ function base(over: Partial<Event> & { ts: number }): Event {
   seq += 1;
   return Object.freeze({
     id: `e_${String(seq).padStart(6, "0")}`,
+    patientId: "test_patient",
     room: "room-1",
     source: "speech" as Source,
     speaker: "patient" as Speaker,
