@@ -19,6 +19,17 @@ appointment slots are deterministic synthetic fixtures created for ECHO.
 Next.js (MIT), React (MIT), TypeScript (Apache-2.0), Tailwind CSS (MIT),
 Lucide React (ISC), tsx (MIT), dotenv (BSD-2-Clause), and Node.js (MIT).
 
+## Claude Code skills
+
+Vendored into `.claude/skills/` as reference guidance for design work. They
+shape how the UI is built; none of them runs on the clinical path.
+
+frontend-design — Anthropic (`anthropics/skills`, MIT). Aesthetic direction.
+
+a11y, animate, copy, design-grill, tokens, uicolor, uiux — dawitlabs/ui-skills
+(see `.claude/skills/ui-skills-LICENSE`). Accessibility, motion, UI copy,
+design interrogation, token enforcement, colour theory and screen redesign.
+
 ## Product inspiration
 
 Haven by ScrappyDevs — command-center and hospital-operations product
