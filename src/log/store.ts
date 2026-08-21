@@ -61,6 +61,7 @@ export class EventLog {
     const event: Event = Object.freeze({
       id: formatId(this.#nextSequence++),
       ts: input.ts,
+      patientId: input.patientId,
       room: input.room,
       source: input.source,
       speaker: input.speaker,
@@ -68,6 +69,10 @@ export class EventLog {
       code: input.code,
       observation: input.observation,
       value: input.value,
+      ...(input.correlationId === undefined ? {} : { correlationId: input.correlationId }),
+      ...(input.causedByEventIds === undefined
+        ? {}
+        : { causedByEventIds: Object.freeze([...input.causedByEventIds]) }),
     });
 
     this.#events.push(event);
