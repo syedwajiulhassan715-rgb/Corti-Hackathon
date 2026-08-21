@@ -22,6 +22,7 @@ function base(over: Partial<Event> & { ts: number; room: string }): Event {
   seq += 1;
   return Object.freeze({
     id: `e_${String(seq).padStart(6, "0")}`,
+    patientId: "test_patient",
     source: "speech" as Source,
     speaker: "patient" as Speaker,
     quote: "",
@@ -209,7 +210,7 @@ test("ward is pure — inputs untouched, cards frozen, no clock", () => {
     (cards[0] as { room: string }).room = "tampered";
   });
   assert.throws(() => {
-    (cards as RoomCardArray).push(cards[0]);
+    (cards as unknown as RoomCardArray).push(cards[0]);
   });
 });
 
