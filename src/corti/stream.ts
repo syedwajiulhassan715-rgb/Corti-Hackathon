@@ -26,7 +26,7 @@ export interface StreamParticipant {
 export interface StreamConfiguration {
   readonly transcription: {
     readonly primaryLanguage: string;
-    readonly diarize?: boolean;
+    readonly isDiarization?: boolean;
     readonly isMultichannel?: boolean;
     readonly participants?: readonly StreamParticipant[];
   };
@@ -100,7 +100,9 @@ export interface CortiErrorMessage extends CortiStreamMessage {
 
 export interface CortiConfigAcceptedMessage extends CortiStreamMessage {
   readonly type: "CONFIG_ACCEPTED";
-  readonly sessionId: string;
+  /** Documented by Corti, but some accepted production handshakes omit it.
+   * CONFIG_ACCEPTED itself remains the protocol readiness boundary. */
+  readonly sessionId?: string;
   readonly configuration?: StreamConfiguration;
 }
 
@@ -209,7 +211,7 @@ export interface CortiStreamConnectRequest {
 
 export interface StreamHandle {
   readonly interactionId: string;
-  readonly sessionId: string;
+  readonly sessionId: string | null;
 
   /**
    * Send raw audio bytes.
@@ -233,6 +235,9 @@ export interface StreamHandle {
    * Register a handler for server messages.
    */
   onMessage(handler: (message: CortiStreamSocketMessage) => void): () => void;
+
+  /** Observe the transport closing after a successful handshake. */
+  onClose(handler: (event: { readonly code: number; readonly reason: string }) => void): () => void;
 
   /**
    * Close locally without sending an `end` message.
@@ -317,6 +322,8 @@ async function connectOnce(
   const messages = new Set<
     (message: CortiStreamSocketMessage) => void
   >();
+  const closes = new Set<(event: { readonly code: number; readonly reason: string }) => void>();
+  let closed: { readonly code: number; readonly reason: string } | null = null;
 
   const sessionId = await waitForConfiguration(
     socket,
@@ -342,6 +349,10 @@ async function connectOnce(
   };
 
   socket.addEventListener("message", handleMessage);
+  socket.addEventListener("close", (event) => {
+    closed = Object.freeze({ code: event.code, reason: event.reason });
+    for (const handler of closes) handler(closed);
+  });
 
   return {
     interactionId: request.interactionId,
@@ -379,6 +390,12 @@ async function connectOnce(
       };
     },
 
+    onClose(handler): () => void {
+      closes.add(handler);
+      if (closed !== null) handler(closed);
+      return () => closes.delete(handler);
+    },
+
     close(code, reason): void {
       socket.close(code, reason);
     },
@@ -388,8 +405,8 @@ async function connectOnce(
 async function waitForConfiguration(
   socket: StreamSocket,
   configuration: StreamConfiguration,
-): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
+): Promise<string | null> {
+  return new Promise<string | null>((resolve, reject) => {
     let finished = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -454,16 +471,7 @@ async function waitForConfiguration(
         const accepted =
           message as CortiConfigAcceptedMessage;
 
-        if (!accepted.sessionId) {
-          fail(
-            new Error(
-              "Corti CONFIG_ACCEPTED response did not contain sessionId",
-            ),
-          );
-          return;
-        }
-
-        finish(() => resolve(accepted.sessionId));
+        finish(() => resolve(accepted.sessionId ?? null));
         return;
       }
 
@@ -556,9 +564,6 @@ function isNonRetryableConfigurationError(
   return (
     error.message.startsWith(
       "Corti stream configuration failed:",
-    ) ||
-    error.message.startsWith(
-      "Corti CONFIG_ACCEPTED response did not contain sessionId",
     ) ||
     error.message.startsWith(
       "Corti stream error during configuration",

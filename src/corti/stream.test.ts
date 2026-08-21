@@ -87,7 +87,7 @@ const credentials: CortiCredentials = {
 const configuration = {
   transcription: {
     primaryLanguage: "en",
-    diarize: false,
+    isDiarization: false,
     isMultichannel: false,
     participants: [
       {
@@ -196,6 +196,37 @@ test("connect waits for CONFIG_ACCEPTED", async () => {
     stream.sessionId,
     "session-123",
   );
+});
+
+test("CONFIG_ACCEPTED without sessionId is still a completed live handshake", async () => {
+  FakeSocket.instances.length = 0;
+  const connection = connectCortiStream(
+    { interactionId: "interaction-123", credentials, configuration },
+    { WebSocket: FakeWebSocket },
+  );
+  const socket = await waitForSocket();
+  socket.open();
+  socket.message({ type: "CONFIG_ACCEPTED", configuration });
+  const stream = await connection;
+  assert.equal(stream.sessionId, null);
+  stream.sendAudio(new Uint8Array([1]));
+  assert.equal(socket.sent.length, 2, "audio is allowed only because CONFIG_ACCEPTED was received");
+});
+
+test("a post-handshake socket close is observable by the live-run owner", async () => {
+  FakeSocket.instances.length = 0;
+  const connection = connectCortiStream(
+    { interactionId: "interaction-123", credentials, configuration },
+    { WebSocket: FakeWebSocket },
+  );
+  const socket = await waitForSocket();
+  socket.open();
+  socket.message({ type: "CONFIG_ACCEPTED", configuration });
+  const stream = await connection;
+  let closed: { code: number; reason: string } | null = null;
+  stream.onClose((event) => { closed = event; });
+  socket.close(1006, "network lost");
+  assert.deepEqual(closed, { code: 1006, reason: "network lost" });
 });
 
 test("audio can be sent after CONFIG_ACCEPTED", async () => {
