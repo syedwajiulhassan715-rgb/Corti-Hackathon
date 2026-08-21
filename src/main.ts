@@ -31,6 +31,8 @@ import { transcribe, type CortiTranscript, type CortiEnvironment } from "./corti
 import { EventLog } from "./log/store.ts";
 import { ground, type Candidate } from "./pipeline/grounding.ts";
 import { propose } from "./pipeline/observations.ts";
+import { monitorEvents } from "./world/feeds.ts";
+import { patientForRoom } from "./world/patients.ts";
 import { assignRoles } from "./pipeline/roles.ts";
 import type { Event, EventId, Millis } from "./contracts/index.ts";
 
@@ -82,6 +84,7 @@ function required(args: Args, name: string): string {
 interface RunMeta {
   readonly audioPath: string;
   readonly room: string;
+  readonly patientId: string;
   readonly startedAt: Millis;
   readonly cacheKey: string;
 }
@@ -186,6 +189,7 @@ function ms(value: Millis): string {
 async function stageTranscribe(args: Args): Promise<number> {
   const audioPath = required(args, "audio");
   const room = str(args, "room") ?? "room-02";
+  const patientId = patientForRoom(room) ?? room;
   const run = str(args, "run") ?? "default";
 
   // D8: the one clock reading. Offset zero of the recording is pinned to it
@@ -211,6 +215,7 @@ async function stageTranscribe(args: Args): Promise<number> {
   field("audio", audioPath);
   field("bytes on disk", statSync(audioPath).size);
   field("room", room);
+  field("patient", patientId);
   field("startedAt (ms)", startedAt);
   field("cache key", cacheKey);
   field("cache state before", cachedBefore ? "HIT (offline path)" : "MISS (will call Corti)");
@@ -230,7 +235,7 @@ async function stageTranscribe(args: Args): Promise<number> {
   const log = EventLog.load(path);
 
   const events = await transcribe(
-    { audioPath, room, startedAt, cacheKey },
+    { audioPath, room, patientId, startedAt, cacheKey },
     { append: (input) => log.append(input), cache, credentials, fetch: counter.fetch },
   );
 
@@ -278,7 +283,7 @@ async function stageTranscribe(args: Args): Promise<number> {
     if (segment !== undefined) slots[event.id] = segment.speakerId;
   });
   writeJson(slotsPath(run), slots);
-  writeJson(metaPath(run), { audioPath, room, startedAt, cacheKey } satisfies RunMeta);
+  writeJson(metaPath(run), { audioPath, room, patientId, startedAt, cacheKey } satisfies RunMeta);
 
   heading("Segments");
   segments.forEach((segment, index) => {
@@ -411,6 +416,9 @@ function stageGround(args: Args): number {
     const origin = originById.get(fact.eventId);
     rebuilt.append({
       ts: fact.ts,
+      // The derived row is about whoever the utterance was about. Never
+      // re-derived, always inherited, so a fact cannot drift to another patient.
+      patientId: fact.patientId,
       room: fact.room,
       source: "speech",
       speaker: fact.speaker,
@@ -536,6 +544,53 @@ async function stageCode(args: Args): Promise<number> {
 
 // ----------------------------------------------------------------- dispatch
 
+// ----------------------------------------------------------- stage: ward
+
+/**
+ * Build the whole ward log: this room's conversation plus every monitor.
+ *
+ * The conversation log is the input and is not modified — this reads
+ * runs/<run>/events.jsonl and writes runs/<run>/ward.jsonl, so a mistake here
+ * can never cost the transcribe/roles/code/ground work that produced it.
+ */
+function stageWard(args: Args): number {
+  const run = str(args, "run") ?? "default";
+  const conversation = loadEvents(run);
+  const startedAt = Number(str(args, "started-at") ?? readJson<RunMeta>(metaPath(run), "Run metadata").startedAt);
+
+  heading("STAGE ward");
+  field("conversation events", conversation.length);
+  field("scenario start", startedAt);
+
+  const path = join(runDir(run), "ward.jsonl");
+  writeFileSync(path, "", "utf8");
+  const log = EventLog.load(path);
+
+  // Monitors first, then the conversation, then sort by ts. Append order is
+  // the tie-break the log preserves, and putting the machines first means a
+  // reading and an utterance at the same millisecond read machine-then-human,
+  // which is the order they would actually arrive in.
+  const monitors = monitorEvents(startedAt);
+  const merged = [
+    ...monitors.map((e) => ({ ...e })),
+    ...conversation.map((e) => ({
+      ts: e.ts, patientId: e.patientId, room: e.room, source: e.source, speaker: e.speaker,
+      quote: e.quote, code: e.code, observation: e.observation, value: e.value,
+    })),
+  ].sort((a, b) => a.ts - b.ts);
+
+  for (const event of merged) log.append(event);
+
+  const rooms = [...new Set(merged.map((e) => e.room))].sort();
+  field("monitor events", monitors.length);
+  field("rooms", rooms.join(", "));
+  field("log size", log.size);
+  console.log(`
+  wrote ${path}`);
+  return 0;
+}
+
+
 const USAGE = `
 ECHO stage runner. One stage per invocation.
 
@@ -544,6 +599,7 @@ ECHO stage runner. One stage per invocation.
   npm run stage -- roles      [--run <name>]
   npm run stage -- ground     [--run <name>] [--candidates <path>]
   npm run stage -- code       [--run <name>] [--offline]
+  npm run stage -- ward       [--run <name>] [--started-at <ms>]
 
 --offline withholds credentials, so a cache miss refuses loudly instead of
 calling Corti. Every stage prints its own network call count.
@@ -560,6 +616,8 @@ async function main(): Promise<number> {
       return stageRoles(args);
     case "ground":
       return stageGround(args);
+    case "ward":
+      return stageWard(args);
     case "code":
       return stageCode(args);
     default:

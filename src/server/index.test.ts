@@ -9,9 +9,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 
-import { createServer, parseUntil, wardResponse } from "./index.ts";
+import { createServer, DEMO_T0, parseUntil, wardResponse } from "./index.ts";
 import { SPEECH, OBSERVATION } from "../engines/rules/patient.rules.ts";
 import type { Event } from "../contracts/index.ts";
+import { EventLog } from "../log/store.ts";
+import { wardEvents } from "../simulation/ward.ts";
 
 const T = 10_000_000;
 const MIN = 60_000;
@@ -21,6 +23,7 @@ function ev(over: Partial<Event> & { ts: number; room: string }): Event {
   seq += 1;
   return Object.freeze({
     id: `e_${String(seq).padStart(6, "0")}`,
+    patientId: "test_patient",
     source: "speech",
     speaker: "patient",
     quote: "",
@@ -43,6 +46,19 @@ async function withServer(
   run: (baseUrl: string) => Promise<void>,
 ): Promise<void> {
   const server = createServer({ events: EVENTS, clock });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  try {
+    await run(`http://127.0.0.1:${port}`);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+async function withDemoServer(run: (baseUrl: string) => Promise<void>): Promise<void> {
+  const log = new EventLog();
+  for (const input of wardEvents({ startTs: DEMO_T0 })) log.append(input);
+  const server = createServer({ events: log.all(), clock: () => DEMO_T0 });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   try {
@@ -165,6 +181,94 @@ test("wardResponse is the same shape the endpoint serves", () => {
   assert.equal(built.rooms.length, 10);
   assert.equal(built.until, T + 20 * MIN);
   assert.equal(built.replayed, true);
+});
+
+test("recorded demo run is isolated, retry-safe, and earns the exact causal ladder", async () => {
+  await withDemoServer(async (base) => {
+    const createdResponse = await fetch(`${base}/api/demo/runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ patientId: "elena_petrova", mode: "recorded" }),
+    });
+    assert.equal(createdResponse.status, 201);
+    const created = await createdResponse.json();
+    const runId = created.runId as string;
+
+    let state = await (await fetch(`${base}/api/demo/runs/${runId}`)).json();
+    assert.equal(state.status, "ready");
+    assert.equal(state.priority.level, "GREEN");
+    assert.equal(state.events.filter((event: Event) => event.observation === "utterance").length, 4);
+    assert.equal(state.events.filter((event: Event) => event.observation === "reported_symptom").length, 2);
+    assert.ok(state.events.every((event: Event) => event.correlationId === runId));
+    assert.ok(state.events.every((event: Event) => !event.quote.includes("9/10")), "acute cached conversation must not contaminate the subtle fallback");
+
+    const expected = [
+      { level: "GREEN", rank: 3, agreement: 0, persistenceHours: 0 },
+      { level: "WATCH", rank: 1, agreement: 1, persistenceHours: 1 },
+      { level: "PERSISTING_CONCERN", rank: 1, agreement: 2, persistenceHours: 2 },
+      { level: "HIGH", rank: 1, agreement: 3, persistenceHours: 4 },
+    ];
+
+    for (let step = 0; step < expected.length; step += 1) {
+      const monitor = await fetch(`${base}/api/demo/runs/${runId}/monitor`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedStep: step }),
+      });
+      assert.equal(monitor.status, 201);
+      state = await (await fetch(`${base}/api/demo/runs/${runId}`)).json();
+      assert.equal(state.monitorStep, step + 1);
+      assert.equal(state.priority.level, expected[step]!.level);
+      assert.equal(state.priority.rank, expected[step]!.rank);
+      assert.equal(state.trends.agreementCount, expected[step]!.agreement);
+      assert.equal(state.trends.persistenceMs / 3_600_000, expected[step]!.persistenceHours);
+
+      if (step === 0) {
+        const before = state.events.length;
+        const duplicate = await fetch(`${base}/api/demo/runs/${runId}/monitor`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expectedStep: 0 }),
+        });
+        assert.equal(duplicate.status, 200);
+        assert.equal((await duplicate.json()).duplicate, true);
+        const after = await (await fetch(`${base}/api/demo/runs/${runId}`)).json();
+        assert.equal(after.events.length, before, "retry must not append a second device reading");
+      }
+    }
+
+    const monitorEvents = state.events.filter((event: Event) => event.source === "vital");
+    assert.equal(monitorEvents.length, 16);
+    assert.ok(monitorEvents.every((event: Event) => event.correlationId === runId));
+    const causalSignals = state.trends.signals
+      .filter((signal: { concerning: boolean }) => signal.concerning)
+      .map((signal: { observation: string }) => signal.observation)
+      .sort();
+    assert.deepEqual(causalSignals, ["respiratory_rate", "spo2", "systolic_bp"]);
+    assert.ok(!causalSignals.includes("heart_rate"), "HR remains visible context, not invented evidence against Elena's real baseline");
+
+    const priorityEvent = [...state.events].reverse().find((event: Event) => event.observation === "priority_changed" && event.value === "HIGH");
+    const notification = state.events.find((event: Event) => event.observation === "notification_created");
+    assert.ok(priorityEvent);
+    assert.ok(notification);
+    assert.deepEqual(notification.causedByEventIds, [priorityEvent.id], "notification must descend from the persisted priority transition");
+    assert.equal(state.queue[0].patientId, "elena_petrova");
+    assert.equal(state.proposals.length, 1);
+
+    const proposal = state.proposals[0];
+    const decisionResponse = await fetch(`${base}/api/demo/runs/${runId}/decide`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proposalId: proposal.id, approved: true, note: "Reassess at bedside now." }),
+    });
+    assert.equal(decisionResponse.status, 200);
+    state = await (await fetch(`${base}/api/demo/runs/${runId}`)).json();
+    const action = state.events.find((event: Event) => event.value === "approved");
+    assert.ok(action, "human approval must append an action event to this run");
+    assert.equal(action.correlationId, runId);
+    assert.deepEqual(action.causedByEventIds, proposal.evidenceEventIds);
+    assert.equal(state.proposals[0].status, "approved");
+  });
 });
 
 function roomLevel(body: { rooms: { room: string; patient: { level: string } }[] }, room: string): string {
