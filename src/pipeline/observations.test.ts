@@ -23,6 +23,7 @@ function utterance(
   return Object.freeze({
     id: `e_${String(++counter).padStart(6, "0")}` as EventId,
     ts: counter * 1000,
+    patientId: "test_patient",
     room,
     source: "speech",
     speaker,
@@ -125,6 +126,7 @@ test("non-speech events propose nothing", () => {
   const vital: Event = Object.freeze({
     id: "e_999999",
     ts: 1,
+    patientId: "test_patient",
     room: "room-02",
     source: "vital",
     speaker: "unknown",

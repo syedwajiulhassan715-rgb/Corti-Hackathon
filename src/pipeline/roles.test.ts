@@ -17,6 +17,7 @@ function speech(quote: string, ts = ++counter * 1000): Event {
   return Object.freeze({
     id: `e_${String(++counter).padStart(6, "0")}` as EventId,
     ts,
+    patientId: "test_patient",
     room: "room-1",
     source: "speech",
     speaker: "unknown",
@@ -238,6 +239,7 @@ test("non-speech events pass through untouched and do not skew the counts", () =
   const vital: Event = Object.freeze({
     id: "e_999999",
     ts: 500,
+    patientId: "test_patient",
     room: "room-1",
     source: "vital",
     speaker: "unknown",

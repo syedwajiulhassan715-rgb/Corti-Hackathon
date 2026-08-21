@@ -20,7 +20,7 @@
 // observations.ts or the engines start passing them across a lane boundary
 // they belong in contracts/, like Event.
 
-import type { Event, EventId, Millis, Speaker } from "../contracts/index.ts";
+import type { Event, EventId, Millis, PatientId, Speaker } from "../contracts/index.ts";
 
 /** A claim awaiting evidence. Produced upstream; grounded or discarded here. */
 export interface Candidate {
@@ -40,6 +40,13 @@ export interface Candidate {
 /** A candidate that survived. Everything here came out of the log. */
 export interface GroundedFact {
   readonly candidateId: string;
+  /**
+   * Who the fact is about, taken from the supporting EVENT and never from the
+   * candidate. The candidate is a claim; the event is the record. A proposer
+   * that named the wrong patient must not be able to launder that through the
+   * gate, so this field is grounded exactly like the quote is.
+   */
+  readonly patientId: PatientId;
   readonly room: string;
   readonly observation: string;
   readonly value: number | string | null;
@@ -188,6 +195,7 @@ export function ground(
     grounded.push(
       Object.freeze({
         candidateId: candidate.id,
+        patientId: event.patientId,
         room: candidate.room,
         observation: candidate.observation,
         value: candidate.value ?? null,

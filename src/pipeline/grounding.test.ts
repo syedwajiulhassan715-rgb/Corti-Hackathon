@@ -19,6 +19,7 @@ function event(
   return Object.freeze({
     id,
     ts: 5000,
+    patientId: "test_patient",
     room: "room-1",
     source: "speech",
     speaker: "patient" as Speaker,
