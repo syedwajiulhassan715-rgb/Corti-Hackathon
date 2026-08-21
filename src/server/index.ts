@@ -39,6 +39,7 @@ import { DiskCache } from "../corti/cache.ts";
 import { createInteraction, patientFromRecord } from "../corti/interactions.ts";
 import {
   connectCortiStream,
+  factsOf,
   type CortiFactsMessage,
   type CortiStreamSocketMessage,
   type CortiTranscriptMessage,
@@ -834,7 +835,7 @@ export function handleCortiMessage(
     // link, and named as a window on the surface rather than dressed up as a
     // precise quote.
     const window = Object.freeze([...run.factWindow]);
-    for (const fact of (message as CortiFactsMessage).facts.filter((item) => !item.isDiscarded)) {
+    for (const fact of factsOf(message as CortiFactsMessage).filter((item) => !item.isDiscarded)) {
       if (run.factKeys.has(fact.id)) continue;
       run.factKeys.add(fact.id);
       const id = appendLive(live, {

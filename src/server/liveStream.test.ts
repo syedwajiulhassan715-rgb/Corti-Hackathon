@@ -69,10 +69,15 @@ function segment(id: string, text: string, speakerId: number, start: number, fin
   } as CortiStreamSocketMessage;
 }
 
+/**
+ * A facts batch as Corti actually sends one: the array key is `fact`,
+ * SINGULAR. Reading the plural returned undefined and threw inside the socket
+ * handler, which took the whole server down mid-encounter.
+ */
 function facts(items: readonly { id: string; text: string; group: string }[]): CortiStreamSocketMessage {
   return {
     type: "facts",
-    facts: items.map((item) => ({
+    fact: items.map((item) => ({
       ...item,
       isDiscarded: false,
       source: "core",
@@ -193,7 +198,7 @@ test("a discarded fact never enters state", () => {
   drive(target, AMBIENT);
   handleCortiMessage(target, {
     type: "facts",
-    facts: [{
+    fact: [{
       id: "f9", text: "Retracted", group: "symptom", isDiscarded: true,
       source: "core", createdAt: "2026-08-21T10:00:00Z", updatedAt: null,
     }],
@@ -223,4 +228,51 @@ test("without credentials no coding is attempted and the encounter still runs", 
   assert.equal(target.codedEventIds.size, 0);
   assert.equal(target.events.filter((event) => event.observation === "utterance").length, 4);
   assert.ok(target.events.every((event) => event.code === null));
+});
+
+test("the plural alias still works, in case a tenant sends it", () => {
+  const target = run();
+
+  drive(target, AMBIENT);
+  handleCortiMessage(target, {
+    type: "facts",
+    facts: [{
+      id: "f1", text: "Shortness of breath", group: "symptom", isDiscarded: false,
+      source: "core", createdAt: "2026-08-21T10:00:00Z", updatedAt: null,
+    }],
+  } as CortiStreamSocketMessage, target.events, undefined, CACHE);
+
+  assert.equal(target.events.filter((event) => event.observation === "corti_fact").length, 1);
+});
+
+test("a facts message carrying no array at all is survived, not thrown on", () => {
+  const target = run();
+
+  drive(target, AMBIENT);
+  handleCortiMessage(
+    target,
+    { type: "facts" } as CortiStreamSocketMessage,
+    target.events,
+    undefined,
+    CACHE,
+  );
+
+  assert.equal(target.events.filter((event) => event.observation === "corti_fact").length, 0);
+  assert.equal(target.events.filter((event) => event.observation === "utterance").length, 4);
+});
+
+test("an unknown message type is ignored and the encounter continues", () => {
+  const target = run();
+
+  drive(target, AMBIENT);
+  handleCortiMessage(
+    target,
+    { type: "usage", usage: { seconds: 12 } } as unknown as CortiStreamSocketMessage,
+    target.events,
+    undefined,
+    CACHE,
+  );
+
+  assert.equal(target.status, "recording");
+  assert.equal(target.events.filter((event) => event.observation === "utterance").length, 4);
 });

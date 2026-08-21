@@ -181,6 +181,24 @@ Both fields required. Recording comes from the audio-bridge websocket.
 `wss://api.<env>.corti.app/audio-bridge/v2/interactions/<id>/streams?tenant-name=<tenant>`
 See `src/corti/stream.ts` for the implemented transport.
 
+### Server message shapes — verified against `@corti/sdk@5.0.0`
+
+- **The facts batch key is `fact`, SINGULAR.** `{ type: "facts", fact: [...] }`,
+  per `StreamFactsMessage`. Reading `message.facts` returns undefined; calling
+  `.filter` on it throws inside the socket listener, and because that listener
+  runs on the socket's event-loop turn the exception becomes an unhandled
+  'error' event that **kills the whole server mid-encounter**. This is what a
+  live rehearsal looked like: transcription stopped dead and no facts ever
+  appeared, because the process was gone.
+- Transcript batches DO use the plural-ish `data`:
+  `{ type: "transcript", data: StreamTranscript[] }`. Do not "fix" this one.
+- `StreamTranscript.id` is the **interaction id**, not a per-segment id — the
+  SDK comment says "Interaction ID that the transcript segments are associated
+  with". Do not use it alone as a segment key; key on time + speakerId too.
+- `StreamTranscript.speakerId` is `-1` when diarization is off.
+- Any handler running off this socket must be wrapped: one malformed message
+  may cost at most one message, never the process.
+
 ### Config shape — verified against `@corti/sdk@5.0.0` generated types
 
 - **`factGenerationInterval` lives INSIDE `mode`.** Not at the top level of

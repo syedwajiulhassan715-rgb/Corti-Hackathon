@@ -115,8 +115,12 @@ export function LiveDemo() {
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
-          channelCount: 1,
-          sampleRate: 16_000,
+          // `ideal`, never a bare value: a bare sampleRate is treated as an
+          // exact constraint by some browsers and throws OverconstrainedError
+          // on hardware that cannot deliver it, which would fail capture
+          // outright on a machine nobody rehearsed on.
+          channelCount: { ideal: 1 },
+          sampleRate: { ideal: 16_000 },
         },
         video: false,
       });
