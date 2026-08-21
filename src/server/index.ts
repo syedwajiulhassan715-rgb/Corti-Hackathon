@@ -196,11 +196,14 @@ export function createServer(options: ServerOptions): Server {
       return sendHtml(response, readFileSync("web/index.html", "utf8"));
     }
 
-    // Static-exported App Router pages (`/ward/`, `/patients/<id>/`). Resolve
-    // only an index below the build root; API paths continue to the handlers
-    // below and a crafted path can never escape into the workspace.
+    // Static-exported App Router pages (`/ward/`, `/patients/<id>/`). Embedded
+    // browsers and preview panes can navigate with `Accept: */*`, so normal
+    // app routes must not depend on that header. Preserve the handful of
+    // legacy JSON GET routes for programmatic clients unless they explicitly
+    // request HTML. A crafted path still cannot escape the build root.
     const acceptsHtml = request.headers.accept?.includes("text/html") ?? false;
-    if (acceptsHtml && !url.pathname.startsWith("/api/")) {
+    const legacyJsonRoute = new Set(["/board", "/history", "/log", "/health", "/ward"]).has(url.pathname);
+    if (!url.pathname.startsWith("/api/") && (acceptsHtml || !legacyJsonRoute)) {
       const routePage = join("web-next/out", url.pathname.replace(/^\//, ""), "index.html");
       if (resolve(routePage).startsWith(resolve("web-next/out")) && existsSync(routePage)) {
         return sendHtml(response, readFileSync(routePage, "utf8"));
@@ -602,7 +605,7 @@ async function handleDemoStart(
       configuration: {
         transcription: {
           primaryLanguage: "en",
-          diarize: true,
+          isDiarization: true,
           isMultichannel: false,
           participants: [{ channel: 0, role: "multiple" }],
         },
@@ -612,9 +615,17 @@ async function handleDemoStart(
         factGenerationInterval: "fast_init",
       },
     });
-    run.stream.onMessage((message) => handleCortiMessage(run, message, run.events));
     run.status = "recording";
-    activity(run, "corti.stream.connected", "CORTI STREAMS", "Live Corti stream connected", { detail: `Session ${run.stream.sessionId}` });
+    run.stream.onMessage((message) => handleCortiMessage(run, message, run.events));
+    run.stream.onClose(({ code, reason }) => {
+      if (run.status === "ended" || run.status === "failed") return;
+      run.status = "failed";
+      run.error = `Corti stream closed unexpectedly (${code}${reason ? ` ${reason}` : ""}).`;
+      activity(run, "corti.stream.closed", "CORTI STREAMS", "Live Corti transport closed before ENDED", { detail: run.error });
+    });
+    activity(run, "corti.stream.connected", "CORTI STREAMS", "Live Corti stream connected", {
+      detail: run.stream.sessionId ? `Session ${run.stream.sessionId}` : "CONFIG_ACCEPTED · upstream omitted session id",
+    });
     return send(response, 201, publicRun(run));
   } catch (error) {
     run.status = "failed"; run.error = (error as Error).message;
@@ -691,7 +702,7 @@ function handleCortiMessage(run: DemoRun, message: CortiStreamSocketMessage, liv
       if (run.factKeys.has(fact.id)) continue;
       run.factKeys.add(fact.id);
       const id = appendLive(live, {
-        ts: run.projectionUntil, patientId: run.patientId, room: run.room, source: "speech", speaker: "unknown",
+        ts: Math.max(run.projectionUntil, run.startedAt), patientId: run.patientId, room: run.room, source: "speech", speaker: "unknown",
         quote: "", code: null, observation: "corti_fact", value: fact.text,
         correlationId: run.runId, causedByEventIds: [],
       });

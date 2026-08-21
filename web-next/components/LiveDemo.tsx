@@ -210,8 +210,10 @@ export function LiveDemo() {
 
   async function reset() {
     setBusy(true);
+    uploadFailureRef.current = new Error("Demo reset by presenter.");
     cleanupMedia();
     try {
+      await uploadChainRef.current;
       await resetDemo();
       setRun(null);
       setError(null);
@@ -251,7 +253,11 @@ export function LiveDemo() {
 
   function cleanupMedia() {
     const recorder = recorderRef.current;
-    if (recorder && recorder.state !== "inactive") recorder.stop();
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      if (recorder.state !== "inactive") recorder.stop();
+    }
     recorderRef.current = null;
     mediaRef.current?.getTracks().forEach((track) => track.stop());
     mediaRef.current = null;
