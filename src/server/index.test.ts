@@ -8,8 +8,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
-import { createServer, DEMO_T0, parseUntil, wardResponse } from "./index.ts";
+import { createServer, DEMO_T0, parseUntil, PREVIOUS_LEVEL_LOOKBACK_MS, wardResponse } from "./index.ts";
 import { SPEECH, OBSERVATION } from "../engines/rules/patient.rules.ts";
 import type { Event } from "../contracts/index.ts";
 import { EventLog } from "../log/store.ts";
@@ -176,6 +178,60 @@ test("parseUntil distinguishes absent from invalid", () => {
   assert.equal(parseUntil("later"), null);
 });
 
+/**
+ * The ward board reports what each patient's level WAS, not only what it is.
+ *
+ * The board used to hardcode previousLevel: null, so the floor plan could show
+ * that a bed was lit but never that it had just changed. The fix is a second
+ * fold one lookback back -- not a remembered map -- so this asserts both that
+ * the delta appears AND that it is still a pure function of (events, now):
+ * the same request twice is the same answer, and the previous level at a step
+ * is exactly the level the board itself served one step earlier.
+ */
+test("the ward board reports the level each patient climbed FROM", async () => {
+  const log = new EventLog();
+  for (const input of wardEvents({ startTs: DEMO_T0, stepMs: PREVIOUS_LEVEL_LOOKBACK_MS })) {
+    log.append(input);
+  }
+  const server = createServer({ events: log.all(), clock: () => DEMO_T0 });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  const base = `http://127.0.0.1:${port}`;
+
+  const board = async (step: number): Promise<Map<string, { level: string; previousLevel: string | null }>> => {
+    const until = DEMO_T0 + step * PREVIOUS_LEVEL_LOOKBACK_MS;
+    const payload = (await (await fetch(`${base}/api/ward?until=${until}`)).json()) as {
+      queue: readonly { patientId: string; level: string; previousLevel: string | null }[];
+    };
+    return new Map(payload.queue.map((row) => [row.patientId, row]));
+  };
+
+  try {
+    const [step1, step2, step4] = [await board(1), await board(2), await board(4)];
+
+    // A patient who climbed across the lookback reports the LOWER prior level.
+    assert.equal(step2.get("elena_petrova")?.level, "PERSISTING_CONCERN");
+    assert.equal(step2.get("elena_petrova")?.previousLevel, "WATCH");
+    assert.equal(step4.get("elena_petrova")?.level, "HIGH");
+    assert.equal(step4.get("elena_petrova")?.previousLevel, "PERSISTING_CONCERN");
+
+    // Not a remembered map: the prior level a step reports is exactly the
+    // level the board served one step earlier, for every patient on it.
+    for (const [patientId, row] of step2) {
+      assert.equal(row.previousLevel, step1.get(patientId)?.level ?? null, `previous level for ${patientId}`);
+    }
+
+    // A patient who did not move reports no change rather than a phantom one.
+    assert.equal(step2.get("jane_smith")?.level, "GREEN");
+    assert.equal(step2.get("jane_smith")?.previousLevel, "GREEN");
+
+    // Still pure: same moment twice, same answer.
+    assert.deepEqual([...(await board(2))], [...step2]);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 test("wardResponse is the same shape the endpoint serves", () => {
   const built = wardResponse(EVENTS, T + 20 * MIN, true);
   assert.equal(built.rooms.length, 10);
@@ -274,3 +330,32 @@ test("recorded demo run is isolated, retry-safe, and earns the exact causal ladd
 function roomLevel(body: { rooms: { room: string; patient: { level: string } }[] }, room: string): string {
   return body.rooms.find((r) => r.room === room)!.patient.level;
 }
+
+// ---------------------------------------------------------------- static path
+//
+// REGRESSION. The App Router emits a chunk directory named literally
+// `[patientId]`, so the browser asks for `%5BpatientId%5D`. The server used to
+// join the raw pathname, look for a directory actually called `%5BpatientId%5D`,
+// and 404. The only symptom was a console 404 and a permanently blank patient
+// page -- the screen SPEC.md calls the hero feature. Nothing failed loudly.
+
+test("a percent-encoded asset path resolves to the real file on disk", async () => {
+  const dir = join("web-next", "out", "_next", "static", "chunks", "app", "patients", "[patientId]");
+  if (!existsSync(dir)) return; // No build present; nothing to assert against.
+  const chunk = readdirSync(dir).find((name) => name.endsWith(".js"));
+  if (chunk === undefined) return;
+  await withServer(() => T, async (base) => {
+    const encoded = `${base}/_next/static/chunks/app/patients/${encodeURIComponent("[patientId]")}/${chunk}`;
+    const response = await fetch(encoded);
+    assert.equal(response.status, 200, "the encoded chunk URL the browser actually requests must serve");
+  });
+});
+
+test("a traversal attempt cannot climb out of the build root, encoded or not", async () => {
+  await withServer(() => T, async (base) => {
+    for (const attack of ["/_next/../../package.json", `/_next/${encodeURIComponent("../../package.json")}`]) {
+      const response = await fetch(`${base}${attack}`);
+      assert.notEqual(response.status, 200, `${attack} must not serve a file outside the build root`);
+    }
+  });
+});

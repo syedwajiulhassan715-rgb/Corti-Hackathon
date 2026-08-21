@@ -121,6 +121,37 @@ button:focus-visible, [role="button"]:focus-visible, input:focus-visible, textar
   to { transform: scaleY(1); transform-origin: top; }
 }
 
+@keyframes attribution-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* A code arrives after its utterance is already on screen, so it must announce
+   itself rather than appear. Scale only -- no layout shift on a live stage. */
+@keyframes code-badge {
+  0% { opacity: 0; transform: scale(.86); }
+  60% { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes listening-dot {
+  0%, 100% { opacity: .25; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.5); }
+}
+
+/* The stare-holder: Corti is processing audio and nothing has come back yet.
+   A travelling sheen says "working" without implying progress it cannot
+   measure -- a percentage bar here would be a lie. */
+@keyframes extracting-sheen {
+  from { background-position: -180% 0; }
+  to { background-position: 280% 0; }
+}
+
+@keyframes waveform-bar {
+  0%, 100% { transform: scaleY(.25); }
+  50% { transform: scaleY(1); }
+}
+
 .ward-reveal { animation: ward-reveal .48s cubic-bezier(.2,.8,.2,1) both; }
 .flow-enter { animation: flow-enter .38s cubic-bezier(.2,.8,.2,1) both; }
 .live-pulse { animation: live-pulse 1.35s ease-in-out infinite; }
@@ -134,12 +165,34 @@ button:focus-visible, [role="button"]:focus-visible, input:focus-visible, textar
 .notification-arrive { animation: notification-arrive .65s cubic-bezier(.2,.8,.2,1) both; }
 .queue-rise { animation: queue-rise .55s cubic-bezier(.2,.8,.2,1) both; }
 .causal-line { animation: causal-line .55s cubic-bezier(.2,.8,.2,1) both; }
+.attribution-enter { animation: attribution-enter .45s cubic-bezier(.2,.8,.2,1) both; }
+.code-badge { animation: code-badge .5s cubic-bezier(.2,.8,.2,1) both; }
+.listening-dot { animation: listening-dot 1.6s ease-in-out infinite; }
+.extracting {
+  background-image: linear-gradient(90deg, transparent 0%, rgba(113,170,155,.55) 45%, rgba(113,170,155,.9) 50%, rgba(113,170,155,.55) 55%, transparent 100%);
+  background-size: 220% 100%;
+  animation: extracting-sheen 1.5s linear infinite;
+}
+.waveform-bar { animation: waveform-bar 1s ease-in-out infinite; transform-origin: center; }
 
+/*
+  Scroll-linked reveal, for decoration only.
+  .why-now is deliberately NOT in this list. It is a dark card carrying white
+  text, and ward-reveal starts at opacity .45 -- so the page's single most
+  important claim sat at 45% opacity until it was 28% into the viewport. On a
+  tall mobile page that is most of the time it is on screen, and white-on-dark
+  at .45 fails contrast outright.
+  prefers-reduced-motion could not save it either: the block below overrides
+  animation-duration, which a view() timeline does not use. The only correct
+  fix is for content this important not to fade at all.
+*/
 @supports (animation-timeline: view()) {
-  .echo-assistant, .why-now {
-    animation: ward-reveal linear both;
-    animation-timeline: view();
-    animation-range: entry 5% cover 28%;
+  @media (prefers-reduced-motion: no-preference) {
+    .echo-assistant {
+      animation: ward-reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 5% cover 28%;
+    }
   }
 }
 

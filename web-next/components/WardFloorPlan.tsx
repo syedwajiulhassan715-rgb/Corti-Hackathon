@@ -1,78 +1,368 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { BedDouble, Cross, Layers3, LocateFixed, Maximize2, Minus, Plus, Search, Users } from "lucide-react";
+import { useMemo, useState } from "react";
+import { BedDouble, CircleAlert, Search } from "lucide-react";
 import type { QueueRow } from "@/lib/api";
+import { signed, vocabularyFor } from "@/lib/clinical";
+import { buildPlan, planRooms, routeToStation, type Plan } from "@/components/ward/geometry";
+import { LEVEL_LABEL, RoomCell } from "@/components/ward/RoomCell";
+import { NurseStation } from "@/components/ward/NurseStation";
+import { TwinTelemetry } from "@/components/ward/TwinTelemetry";
+import { tokenFor } from "@/components/ward/trace";
+import "@/app/ward-twin.css";
 
-type Lens = "trajectory" | "occupancy" | "movement";
-type Room = { x: number; y: number; w: number; h: number; label: string };
-const ROOMS: Room[] = [
-  { x: 122, y: 94, w: 176, h: 128, label: "01" }, { x: 310, y: 94, w: 158, h: 128, label: "02" },
-  { x: 480, y: 94, w: 158, h: 128, label: "03" }, { x: 650, y: 94, w: 228, h: 128, label: "04" },
-  { x: 122, y: 398, w: 176, h: 136, label: "05" }, { x: 310, y: 398, w: 158, h: 136, label: "06" },
-  { x: 480, y: 398, w: 158, h: 136, label: "07" }, { x: 650, y: 398, w: 228, h: 136, label: "08" },
-  { x: 28, y: 250, w: 182, h: 114, label: "09" }, { x: 792, y: 250, w: 188, h: 114, label: "10" },
-  { x: 650, y: 250, w: 130, h: 114, label: "11" },
-];
-
-export function WardFloorPlan({ rows, selected, onSelect }: { rows: readonly QueueRow[]; selected: string | null; onSelect: (patientId: string) => void }) {
-  const surface = useRef<HTMLDivElement>(null);
-  const [lens, setLens] = useState<Lens>("trajectory");
-  const [zoom, setZoom] = useState(1);
+/**
+ * North Ward, as a digital twin.
+ *
+ * WHY A BUILDING AND NOT A GRID. The version this replaces was a four-column
+ * grid of white cards with a tile in the middle that said NURSE STATION. It
+ * was legible, and it was a table wearing a floor plan's clothes: nothing in
+ * it could express distance, adjacency, or a patient who is not in their bed,
+ * because a table has no space in it. A ward round is a walk. The board a
+ * nurse trusts is the one shaped like the walk.
+ *
+ * So this is a real double-loaded corridor: two wings of rooms with walls,
+ * numbered doorways, a corridor between them and a nurse station standing in
+ * it as furniture. Every piece of state is now spatial:
+ *
+ *   - each bed carries a trace that never stops moving, whose rate, height and
+ *     colour come from that patient's level and their own concerning signals;
+ *   - a room off GREEN grows a ring out of its own walls;
+ *   - the escalation is drawn as a route along the corridor from that room's
+ *     door to the station, because that is literally what has to happen next;
+ *   - a patient whose locationStatus is not `bed` is drawn IN THE CORRIDOR,
+ *     with an empty dashed frame left in their room.
+ *
+ * WHAT IS REAL AND WHAT IS NOT. Levels, signals, deltas, baselines, room
+ * numbers, location status and the event count are all the server's, folded
+ * from the log. The building is invented -- ECHO knows which room a patient is
+ * in and nothing about the shape of the ward -- and the waveform is a status
+ * glyph, not a recording, because the log holds discrete observations and no
+ * continuous telemetry. Both are labelled on screen. Fake the environment,
+ * never the clinical path.
+ *
+ * NO NEW DEPENDENCIES. Inline SVG, CSS keyframes, one requestAnimationFrame
+ * for the twin clock. The whole thing renders from a static export with the
+ * network down; an empty ward draws an empty floor and never throws.
+ */
+export function WardFloorPlan({
+  rows,
+  selected,
+  onSelect,
+  events = 0,
+  until = 0,
+  live = false,
+}: {
+  rows: readonly QueueRow[];
+  selected: string | null;
+  onSelect: (patientId: string) => void;
+  /** ward.generated_from_events -- how many events this drawing was folded from. */
+  events?: number;
+  /** The simulated moment the projection was taken at. */
+  until?: number;
+  /** True while a round is playing, so the twin clock shows it is being fed. */
+  live?: boolean;
+}) {
   const [query, setQuery] = useState("");
   const [hovered, setHovered] = useState<string | null>(null);
-  const [level, setLevel] = useState(2);
-  const match = useMemo(() => rows.find((row) => row.name.toLowerCase().includes(query.toLowerCase()) || row.room?.toLowerCase().includes(query.toLowerCase())), [query, rows]);
-  const selectedRow = rows.find((row) => row.patientId === (hovered ?? selected));
-  const active = rows.filter((row) => row.level === "HIGH" || row.level === "CRITICAL").length;
-  function locate() { if (match) { onSelect(match.patientId); setZoom(1.08); } }
 
-  return <div ref={surface} className="floor-surface group relative h-[clamp(590px,69vh,820px)] overflow-hidden bg-[#e9eeec] fullscreen:h-screen">
-    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_48%_46%,rgba(255,255,255,.9),transparent_52%)]" />
-    <div className="absolute left-5 top-5 z-20 flex h-11 w-[min(350px,calc(100%-150px))] items-center rounded-xl border border-white/80 bg-white/90 px-3 shadow-[0_12px_40px_rgba(26,52,43,.12)] backdrop-blur-xl">
-      <Search size={15} className="text-faint" /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === "Enter" && locate()} placeholder="Find a patient or room" className="min-w-0 flex-1 bg-transparent px-3 text-[12px] outline-none placeholder:text-faint" /><button onClick={locate} disabled={!match || !query} className="text-[10px] font-semibold uppercase tracking-wide text-[var(--accent)] disabled:opacity-30">Locate</button>
+  const byRoom = useMemo(() => {
+    const map = new Map<string, QueueRow>();
+    for (const row of rows) {
+      const number = row.room?.match(/\d+/)?.[0];
+      if (number !== undefined) map.set(number.padStart(2, "0"), row);
+    }
+    return map;
+  }, [rows]);
+
+  const plan = useMemo<Plan>(() => buildPlan(planRooms([...byRoom.keys()])), [byRoom]);
+
+  const hits = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (term === "") return null;
+    return new Set(
+      rows
+        .filter((row) => row.name.toLowerCase().includes(term) || (row.room ?? "").toLowerCase().includes(term))
+        .map((row) => row.patientId),
+    );
+  }, [query, rows]);
+
+  // Anything off GREEN is something a nurse has to look at. Counting only
+  // HIGH+CRITICAL here while the header counted everything produced a board
+  // that said "0 need attention" and "1 need review" at the same time.
+  const needReview = rows.filter((row) => row.level !== "GREEN").length;
+  const midY = plan.corridor.y + plan.corridor.h / 2;
+
+  return (
+    <div className="twin bg-[#eef1f0]">
+      <TwinTelemetry events={events} until={until} beds={rows.length} live={live} />
+
+      <div className="flex flex-col gap-3 px-3 pb-3 pt-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <label className="flex h-10 w-full items-center rounded-lg border border-line bg-white px-3 sm:max-w-[320px]">
+          <Search size={15} className="shrink-0 text-faint" aria-hidden />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Find a patient or room"
+            className="min-w-0 flex-1 bg-transparent px-2.5 text-[13px] outline-none placeholder:text-faint"
+          />
+          <span className="sr-only">Find a patient or room</span>
+        </label>
+        <div className="flex items-center gap-4 text-[11px] text-dim">
+          <span className="flex items-center gap-1.5">
+            <BedDouble size={13} aria-hidden />
+            <b className="twin-tabular font-semibold text-ink">{rows.length}</b> beds
+          </span>
+          <span className="flex items-center gap-1.5">
+            <CircleAlert size={13} aria-hidden />
+            <b className="twin-tabular font-semibold text-ink">{needReview}</b> need review
+          </span>
+        </div>
+      </div>
+
+      <div className="px-2 pb-2 sm:px-4 sm:pb-4">
+        <svg
+          className="twin-svg"
+          viewBox={`0 0 ${plan.width} ${plan.height}`}
+          preserveAspectRatio="xMidYMid meet"
+          role="group"
+          aria-label={`North ward floor plan, ${rows.length} beds, ${needReview} need review`}
+        >
+          <defs>
+            {/* The lift. One filter, reused -- a per-room shadow would cost a
+                composite layer on every tile of a wall display. */}
+            <filter id="twin-lift" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#1c3128" floodOpacity="0.16" />
+            </filter>
+            <pattern id="twin-tiles" width="46" height="46" patternUnits="userSpaceOnUse">
+              <path d="M46 0 V46 M0 46 H46" fill="none" stroke="#26332f" strokeOpacity="0.05" strokeWidth="1" />
+            </pattern>
+            <pattern id="twin-hatch" width="10" height="10" patternUnits="userSpaceOnUse">
+              <path d="M-2 2 L2 -2 M0 10 L10 0 M8 12 L12 8" fill="none" stroke="#26332f" strokeOpacity="0.08" strokeWidth="1" />
+            </pattern>
+          </defs>
+
+          {/* Slab, corridor, tiling. */}
+          <rect x={plan.outer.x} y={plan.outer.y} width={plan.outer.w} height={plan.outer.h} fill="var(--twin-floor)" />
+          <rect
+            x={plan.corridor.x}
+            y={plan.corridor.y}
+            width={plan.corridor.w}
+            height={plan.corridor.h}
+            fill="var(--twin-corridor)"
+          />
+          <rect
+            x={plan.corridor.x}
+            y={plan.corridor.y}
+            width={plan.corridor.w}
+            height={plan.corridor.h}
+            fill="url(#twin-tiles)"
+          />
+          {/* The corridor's centre line, as painted on a real floor. */}
+          <line
+            x1={plan.corridor.x + 8}
+            y1={midY}
+            x2={plan.corridor.x + plan.corridor.w - 8}
+            y2={midY}
+            stroke="#26332f"
+            strokeOpacity={0.1}
+            strokeWidth={1}
+            strokeDasharray="14 12"
+          />
+
+          {/* Building envelope, opened at both ends where the corridor leaves. */}
+          <rect
+            x={plan.outer.x}
+            y={plan.outer.y}
+            width={plan.outer.w}
+            height={plan.outer.h}
+            fill="none"
+            stroke="var(--twin-wall)"
+            strokeWidth={2}
+            strokeOpacity={0.85}
+          />
+          {[plan.outer.x, plan.outer.x + plan.outer.w].map((x) => (
+            <line
+              key={x}
+              x1={x}
+              y1={midY - 26}
+              x2={x}
+              y2={midY + 26}
+              stroke="var(--twin-corridor)"
+              strokeWidth={3.5}
+            />
+          ))}
+
+          {/* The bay at the end of the short wing. Not a patient space, so it
+              carries no state and no colour -- just hatching and a name. */}
+          {plan.service !== null && (
+            <g aria-hidden>
+              <rect x={plan.service.x} y={plan.service.y} width={plan.service.w} height={plan.service.h} fill="var(--twin-floor)" />
+              <rect x={plan.service.x} y={plan.service.y} width={plan.service.w} height={plan.service.h} fill="url(#twin-hatch)" />
+              <rect
+                x={plan.service.x}
+                y={plan.service.y}
+                width={plan.service.w}
+                height={plan.service.h}
+                fill="none"
+                stroke="var(--twin-wall)"
+                strokeWidth={1.4}
+                strokeOpacity={0.8}
+              />
+              <text
+                x={plan.service.x + plan.service.w / 2}
+                y={plan.service.y + plan.service.h / 2}
+                textAnchor="middle"
+                fontSize={9}
+                fontFamily="var(--font-mono)"
+                letterSpacing="0.2em"
+                fill="var(--faint)"
+              >
+                UTILITY
+              </text>
+            </g>
+          )}
+
+          {/* Escalation routes: room door -> nurse station. Drawn on the floor,
+              under everything, so they read as paint and not as wires. */}
+          {plan.rooms.map((slot) => {
+            const row = byRoom.get(slot.room);
+            if (row === undefined || row.level === "GREEN") return null;
+            if (hits !== null && !hits.has(row.patientId)) return null;
+            return (
+              <path
+                key={`flow-${slot.room}`}
+                className="twin-flow"
+                d={routeToStation(slot.door, plan.station, plan.corridor)}
+                fill="none"
+                stroke={`var(--lvl-${tokenFor(row.level)})`}
+                strokeWidth={1.5}
+                strokeOpacity={0.55}
+                strokeLinecap="round"
+              />
+            );
+          })}
+
+          <NurseStation rect={plan.station} beds={rows.length} attention={needReview} />
+
+          {plan.rooms.map((slot) => {
+            const row = byRoom.get(slot.room) ?? null;
+            return (
+              <RoomCell
+                key={slot.room}
+                slot={slot}
+                row={row}
+                selected={row !== null && row.patientId === selected}
+                dimmed={row !== null && hits !== null && !hits.has(row.patientId)}
+                onSelect={() => row !== null && onSelect(row.patientId)}
+                onFocusRoom={setHovered}
+              />
+            );
+          })}
+
+          {/* Anyone not in their bed stands in the corridor, where they are. */}
+          {plan.rooms.map((slot) => {
+            const row = byRoom.get(slot.room);
+            if (row === undefined || row.locationStatus === "bed") return null;
+            const y = slot.wing === "top" ? midY - 34 : midY + 22;
+            return <InCorridor key={`loc-${slot.room}`} x={slot.door.x} y={y} row={row} />;
+          })}
+
+          {/* The tether: on hover, the one reading that is moving most. */}
+          {plan.rooms.map((slot) => {
+            if (hovered !== slot.room) return null;
+            const row = byRoom.get(slot.room);
+            if (row === undefined) return null;
+            return <Tether key={`tether-${slot.room}`} plan={plan} doorX={slot.door.x} wing={slot.wing} row={row} />;
+          })}
+        </svg>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-3 pb-4 text-[11px] text-dim sm:px-5">
+        {(["GREEN", "WATCH", "PERSISTING_CONCERN", "HIGH"] as const).map((level) => (
+          <span key={level} className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ background: `var(--lvl-${tokenFor(level)})` }} aria-hidden />
+            {LEVEL_LABEL[level]}
+          </span>
+        ))}
+        <span className="flex items-center gap-1.5 text-faint">
+          <span className="h-px w-4 border-t border-dashed border-faint" aria-hidden />
+          Route to nurse station
+        </span>
+        <span className="ml-auto text-faint">Bed assignment and floor geometry are simulated · trace shape is illustrative</span>
+      </div>
     </div>
-    <div className="absolute right-5 top-5 z-20 hidden rounded-xl border border-white/80 bg-white/90 p-1 shadow-[0_12px_40px_rgba(26,52,43,.1)] backdrop-blur-xl sm:flex">
-      {(["trajectory", "occupancy", "movement"] as Lens[]).map((item) => <button key={item} onClick={() => setLens(item)} className={`rounded-lg px-3 py-2 text-[10px] font-semibold capitalize transition ${lens === item ? "bg-[#173b35] text-white shadow-sm" : "text-dim hover:bg-sunk"}`}>{item}</button>)}
-    </div>
-    <div className="absolute left-5 top-20 z-20 overflow-hidden rounded-xl border border-white/80 bg-white/90 shadow-[0_12px_35px_rgba(26,52,43,.1)] backdrop-blur-xl">
-      {[3, 2, 1].map((floor) => <button key={floor} onClick={() => setLevel(floor)} className={`flex h-10 w-11 items-center justify-center border-b border-line text-[10px] font-semibold last:border-0 ${level === floor ? "bg-[#173b35] text-white" : "text-dim hover:bg-sunk"}`}>L{floor}</button>)}
-    </div>
-    <div className="absolute inset-0 flex items-center justify-center transition-transform duration-500 ease-out" style={{ transform: `translateY(18px) scale(${zoom})` }}>
-      <svg viewBox="0 0 1020 650" className="h-full w-full select-none" role="group" aria-label={`Interactive North Ward, level ${level}`}>
-        <defs><filter id="wardShadow" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="26" stdDeviation="22" floodColor="#173b35" floodOpacity=".2" /></filter><linearGradient id="corridor" x1="0" x2="0" y1="0" y2="1"><stop stopColor="#fbfdfc" /><stop offset="1" stopColor="#e2e9e6" /></linearGradient><linearGradient id="station" x1="0" x2="1" y1="0" y2="1"><stop stopColor="#d9e9e4" /><stop offset="1" stopColor="#c3d8d1" /></linearGradient><pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#cfd9d5" strokeWidth=".7" /></pattern></defs>
-        <rect width="1020" height="650" fill="url(#grid)" opacity=".32" />
-        <g filter="url(#wardShadow)" transform="skewX(-4)"><path d="M88 75h834v492H88z" fill="#acbbb5" opacity=".65" /><path d="M102 57h806v490H102z" fill="url(#corridor)" stroke="#aebdb7" strokeWidth="2" /><path d="M216 225h574v164H216z" fill="#edf2f0" stroke="#c2cec9" strokeWidth="2" /><path d="M246 258h378v98H246z" fill="url(#station)" stroke="#89a59b" strokeWidth="2" />
-          <g transform="translate(380 280)"><circle cx="28" cy="20" r="27" fill="#fff" stroke="#8fa79e" /><path d="M16 20h24M28 8v24" stroke="#2f6f6b" strokeWidth="3" strokeLinecap="round" /><text x="68" y="16" fontSize="12" fontWeight="700" letterSpacing="1.2" fill="#24463f">NURSE HUB</text><text x="68" y="37" fontSize="10" fill="#667a73">2 clinicians available · coordination live</text></g>
-          {level === 2 ? rows.map((row, index) => <RoomShape key={row.patientId} row={row} room={roomFor(row, index)} active={row.patientId === selected} lens={lens} onSelect={() => onSelect(row.patientId)} onHover={setHovered} />) : <EmptyFloor level={level} />}
-        </g>
-      </svg>
-    </div>
-    <div className="absolute bottom-5 left-5 z-20 flex items-center gap-4 rounded-xl border border-white/80 bg-white/90 px-4 py-3 text-[10px] text-dim shadow-sm backdrop-blur-xl"><Legend color="green" label="Stable" /><Legend color="watch" label="Watch" /><Legend color="high" label="Attention" /></div>
-    <div className="absolute bottom-5 right-5 z-20 grid overflow-hidden rounded-xl border border-white/80 bg-white/90 shadow-sm backdrop-blur-xl"><Control label="Zoom in" onClick={() => setZoom((value) => Math.min(1.2, value + .07))}><Plus size={15} /></Control><Control label="Zoom out" onClick={() => setZoom((value) => Math.max(.84, value - .07))}><Minus size={15} /></Control><Control label="Reset view" onClick={() => setZoom(1)}><LocateFixed size={15} /></Control><Control label="Fullscreen" onClick={() => void surface.current?.requestFullscreen()}><Maximize2 size={15} /></Control></div>
-    <div className="absolute bottom-5 left-1/2 z-20 hidden -translate-x-1/2 items-center gap-5 rounded-xl border border-white/80 bg-[#173b35]/95 px-5 py-3 text-white shadow-[0_14px_45px_rgba(17,47,40,.25)] backdrop-blur-xl lg:flex"><Stat icon={<BedDouble size={14} />} value={`${rows.length}`} label="beds observed" /><span className="h-7 w-px bg-white/15" /><Stat icon={<Cross size={14} />} value={`${active}`} label="need attention" /><span className="h-7 w-px bg-white/15" /><Stat icon={<Users size={14} />} value="2" label="staff available" /></div>
-    {selectedRow && level === 2 && <div className="pointer-events-none absolute left-1/2 top-[17%] z-30 hidden -translate-x-1/2 rounded-xl border border-white/70 bg-[#112f29]/95 px-4 py-3 text-white shadow-2xl backdrop-blur-xl xl:block"><p className="text-[9px] font-semibold uppercase tracking-[.14em] text-white/55">{selectedRow.room?.replace("room-", "Room ")} · priority #{selectedRow.rank}</p><p className="mt-1 text-[13px] font-semibold">{selectedRow.name}</p><p className="mt-1 max-w-[250px] truncate text-[10px] text-white/65">{selectedRow.reasons[0] ?? "No meaningful change from baseline"}</p></div>}
-    {level !== 2 && <div className="absolute inset-0 z-10 flex items-center justify-center"><div className="rounded-2xl border border-white/80 bg-white/90 px-6 py-5 text-center shadow-xl backdrop-blur-xl"><Layers3 className="mx-auto text-[var(--accent)]" size={20} /><p className="mt-3 text-[13px] font-semibold">Level {level} context view</p><p className="mt-1 text-[11px] text-dim">Patient telemetry is active on Level 2.</p><button onClick={() => setLevel(2)} className="mt-4 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent)]">Return to live ward</button></div></div>}
-  </div>;
+  );
 }
 
-function RoomShape({ row, room, active, lens, onSelect, onHover }: { row: QueueRow; room: Room; active: boolean; lens: Lens; onSelect: () => void; onHover: (id: string | null) => void }) {
-  const token = row.level === "PERSISTING_CONCERN" ? "concern" : row.level.toLowerCase();
-  const color = lens === "occupancy" ? "#9cc9bd" : lens === "movement" ? (row.locationStatus === "bed" ? "#dbe5e1" : "#e9bd72") : `var(--lvl-${token})`;
-  const opacity = lens === "trajectory" ? (row.level === "GREEN" ? .15 : .32) : .64;
-  const { x, y, w, h } = room;
-  return <g role="button" tabIndex={0} aria-label={`${row.name}, ${row.room}, ${row.level}`} onClick={onSelect} onMouseEnter={() => onHover(row.patientId)} onMouseLeave={() => onHover(null)} onFocus={() => onHover(row.patientId)} onBlur={() => onHover(null)} onKeyDown={(event) => (event.key === "Enter" || event.key === " ") && onSelect()} className="cursor-pointer outline-none">
-    <path d={`M${x} ${y}l12 -12h${w}l-12 12z`} fill={active ? "#7e9890" : "#c5d0cc"} /><path d={`M${x + w} ${y}l12 -12v${h}l-12 12z`} fill={active ? "#8ea69e" : "#b7c5c0"} /><rect x={x} y={y} width={w} height={h} rx="3" fill={active ? "#fff" : color} fillOpacity={active ? 1 : opacity} stroke={active ? "#173b35" : "#9eafa8"} strokeWidth={active ? 3 : 1.3} className="transition-all duration-300" />
-    <rect x={x + 15} y={y + 20} width="52" height="31" rx="4" fill="#fff" stroke="#a9bab3" /><rect x={x + 20} y={y + 25} width="17" height="9" rx="2" fill="#d8e3df" /><line x1={x + 67} y1={y + 23} x2={x + 67} y2={y + 56} stroke="#718a81" strokeWidth="3" />
-    <circle cx={x + w - 24} cy={y + 24} r={active ? 10 : 8} fill={`var(--lvl-${token})`}><animate attributeName="opacity" values={row.level === "CRITICAL" ? "1;.45;1" : "1;1;1"} dur="1.7s" repeatCount="indefinite" /></circle>
-    <text x={x + 16} y={y + h - 39} fontSize="9" fontWeight="700" letterSpacing="1" fill="#61756e">ROOM {room.label}</text><text x={x + 16} y={y + h - 18} fontSize="12" fontWeight="700" fill="#17332d">{shortName(row.name)}</text>
-    {row.locationStatus !== "bed" && <g transform={`translate(${x + w - 65} ${y + h - 43})`}><rect width="49" height="24" rx="12" fill="#fff1d2" /><text x="24.5" y="16" textAnchor="middle" fontSize="8" fontWeight="700" fill="#795b27">{row.locationStatus.toUpperCase()}</text></g>}
-  </g>;
+/**
+ * A patient who is on a stretcher or walking. Their room keeps their number and
+ * an empty frame; this is where they actually are.
+ */
+function InCorridor({ x, y, row }: { x: number; y: number; row: QueueRow }) {
+  const initials = row.name
+    .split(/\s+/)
+    .map((part) => part.charAt(0))
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const w = 74;
+  const left = Math.max(24, x - w / 2);
+  return (
+    <g aria-hidden>
+      <rect x={left} y={y} width={w} height={16} rx={8} fill="var(--surface)" stroke="var(--line)" strokeWidth={1} />
+      <circle cx={left + 9} cy={y + 8} r={4} fill={`var(--lvl-${tokenFor(row.level)})`} opacity={0.75} />
+      <text x={left + 17} y={y + 11.5} fontSize={8.5} fill="var(--dim)" letterSpacing="0.04em">
+        {initials} · {row.locationStatus}
+      </text>
+    </g>
+  );
 }
 
-function EmptyFloor({ level }: { level: number }) { return <g opacity=".42">{ROOMS.slice(0, 8).map((room) => <g key={`${level}-${room.label}`}><rect x={room.x} y={room.y} width={room.w} height={room.h} rx="3" fill="#d9e1de" stroke="#9eafa8" /><text x={room.x + 16} y={room.y + room.h - 18} fontSize="10" fontWeight="700" fill="#61756e">L{level} · {room.label}</text></g>)}</g>; }
-function roomFor(row: QueueRow, fallbackIndex: number) { const roomNumber = Number(row.room?.match(/\d+/)?.[0]); return ROOMS[roomNumber - 1] ?? ROOMS[fallbackIndex] ?? ROOMS[10]; }
-function shortName(name: string) { return name.length > 18 ? `${name.split(" ")[0]} ${name.split(" ").at(-1)?.[0]}.` : name; }
-function Legend({ color, label }: { color: string; label: string }) { return <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ background: `var(--lvl-${color})` }} />{label}</span>; }
-function Control({ children, label, onClick }: { children: React.ReactNode; label: string; onClick: () => void }) { return <button title={label} aria-label={label} onClick={onClick} className="flex h-9 w-9 items-center justify-center border-b border-line text-dim transition last:border-0 hover:bg-sunk hover:text-ink">{children}</button>; }
-function Stat({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) { return <div className="flex items-center gap-2.5">{icon}<div><p className="text-[11px] font-semibold tabular">{value}</p><p className="text-[8px] uppercase tracking-[.12em] text-white/50">{label}</p></div></div>; }
+/**
+ * The hover tether: a line from the room out into the corridor, ending in the
+ * single reading that is moving most. It is deliberately one fact. The full
+ * story lives in the patient panel, and a floor plan that tries to tell it
+ * covers the two rooms either side of the one being described.
+ */
+function Tether({
+  plan,
+  doorX,
+  wing,
+  row,
+}: {
+  plan: Plan;
+  doorX: number;
+  wing: "top" | "bottom";
+  row: QueueRow;
+}) {
+  const top = [...row.signals]
+    .filter((signal) => signal.concerning)
+    .sort((a, b) => Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0))[0];
+
+  const vocabulary = top === undefined ? null : vocabularyFor(top.observation);
+  const text =
+    top === undefined || vocabulary === null
+      ? "At baseline · nothing moving"
+      : `${vocabulary.label} ${top.current ?? "--"}${vocabulary.unit} ${top.delta === null ? "" : `${signed(top.delta)} vs baseline ${top.baseline ?? "--"}`}`.trim();
+
+  // The label hugs the corridor wall it belongs to, in the band the nurse
+  // station does not occupy. Floating it out into the middle of the corridor
+  // put it on top of the station, which is both ugly and the one object on the
+  // floor that must never be obscured.
+  const h = 20;
+  const w = Math.min(plan.width - 40, 20 + text.length * 5.1);
+  const y = wing === "top" ? plan.corridor.y + 1 : plan.corridor.y + plan.corridor.h - h - 1;
+  const x = Math.min(Math.max(doorX - w / 2, 22), plan.width - 22 - w);
+  const wallY = wing === "top" ? plan.corridor.y : plan.corridor.y + plan.corridor.h;
+
+  return (
+    <g className="twin-tether">
+      <line x1={doorX} y1={wallY} x2={doorX} y2={wing === "top" ? y + h : y} stroke="var(--ink)" strokeWidth={0.8} strokeOpacity={0.3} />
+      <rect x={x} y={y} width={w} height={h} rx={4} fill="var(--ink)" />
+      <text x={x + 10} y={y + 13.5} fontSize={9} fill="#ffffff" letterSpacing="0.01em">
+        {text}
+      </text>
+    </g>
+  );
+}

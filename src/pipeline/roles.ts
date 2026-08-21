@@ -36,6 +36,12 @@ import type { Event, EventId, Millis, Speaker } from "../contracts/index.ts";
 export type RoleMethod =
   /** A slot stated its own clinical role out loud. Testimony, not inference. */
   | "self-identification"
+  /**
+   * Who is addressed versus who reports. A clinician talks ABOUT the patient
+   * ("your saturation is 87"); a patient talks about THEMSELVES ("I feel
+   * dizzy"). Stronger than turn shape, and checked before it.
+   */
+  | "address-vs-report"
   /** Two or more slots, separated by how often each one asks questions. */
   | "question-density"
   /** Question rates tied; clinical vocabulary decided it. */
@@ -53,6 +59,10 @@ export interface SlotProfile {
   readonly questions: number;
   /** questions / utterances, 0..1. */
   readonly questionRate: number;
+  /** Second-person address ("you", "your") per utterance. */
+  readonly secondPersonRate: number;
+  /** First-person report ("I", "my") per utterance. */
+  readonly firstPersonRate: number;
   /** Clinical terms per utterance. Tie-break only. */
   readonly clinicalRate: number;
   readonly role: Speaker;
@@ -94,6 +104,16 @@ const CLINICAL_TERMS = [
   "follow up", "review", "scan", "x-ray", "ecg", "bloodwork", "titrate",
 ];
 
+/**
+ * Second person: the clinician's register. A consultation is asymmetric in a
+ * way that survives a dismissive clinician and an inquisitive patient --
+ * whoever is being ASKED ABOUT is the patient, whatever the turn shape.
+ */
+const SECOND_PERSON = new Set(["you", "your", "yours", "you're", "youre", "you've", "youve"]);
+
+/** First person: the patient's register. Reporting a body from the inside. */
+const FIRST_PERSON = new Set(["i", "i'm", "im", "i've", "ive", "my", "me", "mine", "myself"]);
+
 const WORD = /[a-z']+/g;
 
 function isQuestion(quote: string): boolean {
@@ -103,6 +123,14 @@ function isQuestion(quote: string): boolean {
 
   const first = text.toLowerCase().match(WORD)?.[0];
   return first !== undefined && INTERROGATIVES.has(first);
+}
+
+/** How many words of `vocabulary` this quote uses. */
+function pronounHits(quote: string, vocabulary: ReadonlySet<string>): number {
+  const words = quote.toLowerCase().match(WORD) ?? [];
+  let hits = 0;
+  for (const word of words) if (vocabulary.has(word)) hits += 1;
+  return hits;
 }
 
 function clinicalHits(quote: string): number {
@@ -128,6 +156,13 @@ function withSpeaker(event: Event, speaker: Speaker): Event {
  * reads no time of its own (D8).
  */
 const SELF_ID_WINDOW_MS = 30_000;
+
+/**
+ * How much clearer one slot's address-versus-report gap must be before it is
+ * allowed to decide. Below this the two registers are too close to separate
+ * honestly, and turn shape gets its turn instead.
+ */
+const ADDRESS_MARGIN = 0.35;
 
 /**
  * A first-person claim to a clinical role.
@@ -243,17 +278,22 @@ export function assignRoles(
   events: readonly Event[],
   slots: ReadonlyMap<EventId, number>,
 ): RoleAssignment {
-  const counts = new Map<number, { utterances: number; questions: number; clinical: number }>();
+  const counts = new Map<
+    number,
+    { utterances: number; questions: number; clinical: number; second: number; first: number }
+  >();
 
   for (const event of events) {
     if (event.source !== "speech") continue;
     const slot = slots.get(event.id);
     if (slot === undefined) continue;
 
-    const tally = counts.get(slot) ?? { utterances: 0, questions: 0, clinical: 0 };
+    const tally = counts.get(slot) ?? { utterances: 0, questions: 0, clinical: 0, second: 0, first: 0 };
     tally.utterances += 1;
     if (isQuestion(event.quote)) tally.questions += 1;
     tally.clinical += clinicalHits(event.quote);
+    tally.second += pronounHits(event.quote, SECOND_PERSON);
+    tally.first += pronounHits(event.quote, FIRST_PERSON);
     counts.set(slot, tally);
   }
 
@@ -264,6 +304,8 @@ export function assignRoles(
       utterances: t.utterances,
       questions: t.questions,
       questionRate: t.questions / t.utterances,
+      secondPersonRate: t.second / t.utterances,
+      firstPersonRate: t.first / t.utterances,
       clinicalRate: t.clinical / t.utterances,
       role: "unknown" as Speaker,
     }));
@@ -303,6 +345,47 @@ export function assignRoles(
   // right response to a contradiction is not to pick a side. Fall through and
   // let the heuristic decide on turn shape instead, which at least reports
   // itself honestly as an inference.
+
+  // Who is being addressed, before who is asking.
+  //
+  // A real ward recording (fixtures/audio/test_twovoice_01, replayed
+  // 2026-08-21) inverted question density outright: the nurse was dismissive
+  // and the patient did most of the asking -- "Is that bad?", "Could this be a
+  // blood clot?", "You did not answer my question." Turn shape said the
+  // patient was the clinician.
+  //
+  // Register does not invert the same way. A clinician talks ABOUT the person
+  // in front of them ("your saturation is 87", "you said your pain was 1 out
+  // of 10"); a patient reports a body from the inside ("I feel dizzy", "I'm
+  // puffing just sitting here"). An anxious patient asks more questions than a
+  // brusque nurse, but they do not start describing the nurse's body.
+  //
+  // Still an inference, so it reports itself as one, and a margin is required:
+  // a narrow gap falls through to turn shape rather than pretending to know.
+  const addressRanked = profiles.slice().sort(
+    (a, b) => (b.secondPersonRate - b.firstPersonRate) - (a.secondPersonRate - a.firstPersonRate),
+  );
+  const [addressTop, addressRunnerUp] = addressRanked;
+  if (addressTop !== undefined && addressRunnerUp !== undefined) {
+    const topGap = addressTop.secondPersonRate - addressTop.firstPersonRate;
+    const nextGap = addressRunnerUp.secondPersonRate - addressRunnerUp.firstPersonRate;
+    if (topGap - nextGap >= ADDRESS_MARGIN) {
+      return resolve(
+        events,
+        slots,
+        profiles,
+        addressTop.slot,
+        "address-vs-report",
+        `Slot ${addressTop.slot} addresses the other speaker ` +
+          `(${addressTop.secondPersonRate.toFixed(1)} "you" against ` +
+          `${addressTop.firstPersonRate.toFixed(1)} "I" per turn) while slot ` +
+          `${addressRunnerUp.slot} reports itself ` +
+          `(${addressRunnerUp.firstPersonRate.toFixed(1)} "I" against ` +
+          `${addressRunnerUp.secondPersonRate.toFixed(1)} "you"), so slot ` +
+          `${addressTop.slot} is the clinician.`,
+      );
+    }
+  }
 
   // Highest question rate is the clinician. Consultations are asymmetric: the
   // clinician drives, the patient answers. Vocabulary only settles a draw.

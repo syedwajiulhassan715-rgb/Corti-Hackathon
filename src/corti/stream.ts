@@ -26,6 +26,10 @@ export interface StreamParticipant {
 export interface StreamConfiguration {
   readonly transcription: {
     readonly primaryLanguage: string;
+    /** Enable diarization. Renamed from isDiarization; takes precedence. */
+    readonly diarize?: boolean;
+    /** Deprecated by Corti in favour of `diarize`, still accepted. Sent for
+     *  backward compatibility; CONFIG_ACCEPTED echoes both. */
     readonly isDiarization?: boolean;
     readonly isMultichannel?: boolean;
     readonly participants?: readonly StreamParticipant[];
@@ -33,13 +37,22 @@ export interface StreamConfiguration {
   readonly mode: {
     readonly type: "facts" | "transcription";
     readonly outputLocale: string;
+    /**
+     * Rate at which facts are generated. Belongs HERE, inside mode -- Corti
+     * ignores it at the top level of the config and silently falls back to
+     * `fixed`, which is ~60s between fact batches. Confirmed against
+     * @corti/sdk StreamConfigMode.
+     *
+     * `fast_init` follows a logarithmic curve: first batch around 10s, then
+     * 20s, then 26s, widening to the 60s default.
+     */
+    readonly factGenerationInterval?: "fixed" | "fast_init";
   };
   readonly retentionPolicy?: "retain" | "none";
   readonly audioFormat?: string;
   readonly audioEvents?: {
     readonly enabled: boolean;
   };
-  readonly factGenerationInterval?: "fixed" | "fast_init";
   readonly replacements?: readonly {
     readonly find: string;
     readonly replace: string;
@@ -75,16 +88,33 @@ export interface CortiTranscriptMessage extends CortiStreamMessage {
 
 export interface CortiFactsMessage extends CortiStreamMessage {
   readonly type: "facts";
-  readonly facts: readonly {
-    readonly id: string;
-    readonly text: string;
-    readonly group: string;
-    readonly groupId?: string;
-    readonly isDiscarded: boolean;
-    readonly source: string;
-    readonly createdAt: string;
-    readonly updatedAt: string | null;
-  }[];
+  /**
+   * SINGULAR. Corti sends `fact`, not `facts`, and the difference cost a live
+   * encounter: reading the plural gave undefined, `.filter` threw inside the
+   * socket handler, and the unhandled rejection took the whole server down
+   * mid-demo. Confirmed against @corti/sdk StreamFactsMessage.
+   *
+   * `facts` is kept as an optional alias so a tenant or future version that
+   * does send the plural still works. Read both, trust neither to exist.
+   */
+  readonly fact?: readonly CortiFact[];
+  readonly facts?: readonly CortiFact[];
+}
+
+export interface CortiFact {
+  readonly id: string;
+  readonly text: string;
+  readonly group: string;
+  readonly groupId?: string;
+  readonly isDiscarded: boolean;
+  readonly source: string;
+  readonly createdAt: string;
+  readonly updatedAt?: string | null;
+}
+
+/** Every fact in a batch, whichever key this tenant used to deliver them. */
+export function factsOf(message: CortiFactsMessage): readonly CortiFact[] {
+  return message.fact ?? message.facts ?? [];
 }
 
 export interface CortiErrorMessage extends CortiStreamMessage {
@@ -344,7 +374,18 @@ async function connectOnce(
     const message = parseMessage(event.data);
 
     for (const handler of messages) {
-      handler(message);
+      // A throwing handler used to take the process with it: this listener
+      // runs on the socket's event loop turn, so an exception here becomes an
+      // unhandled 'error' event and the server dies mid-encounter. One
+      // malformed message must cost at most one message (test law).
+      try {
+        handler(message);
+      } catch (error) {
+        console.error(
+          `[corti stream] handler threw on a ${message.type} message; the encounter continues.`,
+          error,
+        );
+      }
     }
   };
 

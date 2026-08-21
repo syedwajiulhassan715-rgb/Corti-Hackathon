@@ -11,7 +11,7 @@
 
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
-import { join, resolve, extname } from "node:path";
+import { join, resolve, extname, sep } from "node:path";
 
 import type { Event, EventId, EventInput, Millis } from "../contracts/index.ts";
 import { ward, type RoomCard } from "../projections/ward.ts";
@@ -30,12 +30,20 @@ import {
   roomForPatient,
   ALL_PATIENTS,
 } from "../world/patients.ts";
-import type { PatientPriority, PriorityLevel } from "../contracts/index.ts";
+import type { PatientPriority, PatientTrends, PriorityLevel } from "../contracts/index.ts";
 import { createCortiAuth } from "../corti/auth.ts";
+import { attributeLive } from "../pipeline/liveAttribution.ts";
+import { propose as proposeObservations } from "../pipeline/observations.ts";
+import { ground } from "../pipeline/grounding.ts";
+import { detectContradiction } from "../engines/contradiction.ts";
+import type { RoleAssignment } from "../pipeline/roles.ts";
+import { codeText } from "../corti/coding.ts";
 import { DiskCache } from "../corti/cache.ts";
 import { createInteraction, patientFromRecord } from "../corti/interactions.ts";
 import {
   connectCortiStream,
+  factsOf,
+  type CortiErrorMessage,
   type CortiFactsMessage,
   type CortiStreamSocketMessage,
   type CortiTranscriptMessage,
@@ -204,17 +212,17 @@ export function createServer(options: ServerOptions): Server {
     const acceptsHtml = request.headers.accept?.includes("text/html") ?? false;
     const legacyJsonRoute = new Set(["/board", "/history", "/log", "/health", "/ward"]).has(url.pathname);
     if (!url.pathname.startsWith("/api/") && (acceptsHtml || !legacyJsonRoute)) {
-      const routePage = join("web-next/out", url.pathname.replace(/^\//, ""), "index.html");
-      if (resolve(routePage).startsWith(resolve("web-next/out")) && existsSync(routePage)) {
+      const routePage = buildPath(url.pathname, "index.html");
+      if (routePage !== null && existsSync(routePage)) {
         return sendHtml(response, readFileSync(routePage, "utf8"));
       }
     }
 
     // Static assets emitted by the Next build (/_next/..., icons, chunks).
     if (url.pathname.startsWith("/_next/") || STATIC_FILE.test(url.pathname)) {
-      const asset = join("web-next/out", url.pathname.replace(/^\//, ""));
+      const asset = buildPath(url.pathname);
       // Never let a crafted path climb out of the build directory.
-      if (!resolve(asset).startsWith(resolve("web-next/out"))) {
+      if (asset === null) {
         return send(response, 403, { error: "No." });
       }
       if (existsSync(asset)) {
@@ -233,7 +241,8 @@ export function createServer(options: ServerOptions): Server {
       const moment = momentFrom(url, clock);
       if (moment === null) return badUntil(response);
 
-      const queue = wardQueue(live, moment);
+      const board = wardBoard(live, moment);
+      const queue = board.queue;
       const counts: Record<string, number> = {
         GREEN: 0, WATCH: 0, PERSISTING_CONCERN: 0, HIGH: 0, CRITICAL: 0,
       };
@@ -252,6 +261,21 @@ export function createServer(options: ServerOptions): Server {
             name: loadRecord(p.patientId)?.name ?? p.patientId,
             locationStatus: typeof context?.value === "string" ? context.value : "bed",
             locationEventId: context?.id ?? null,
+            // The trajectory behind the rank, so the floor plan can show WHY a
+            // bed is lit rather than only THAT it is. Signals with no current
+            // reading are dropped: an empty glyph teaches the reader nothing.
+            signals: (board.trends.get(p.patientId)?.signals ?? [])
+              .filter((signal) => signal.current !== null)
+              .map((signal) => ({
+                observation: signal.observation,
+                baseline: signal.baseline,
+                current: signal.current,
+                delta: signal.delta,
+                direction: signal.direction,
+                concerning: signal.concerning,
+                overdue: signal.overdue,
+                sampleCount: signal.sampleCount,
+              })),
           };
         }),
       });
@@ -452,7 +476,7 @@ interface DemoTranscriptSegment {
   readonly text: string;
 }
 
-interface DemoRun {
+export interface DemoRun {
   readonly runId: string;
   readonly patientId: string;
   readonly room: string;
@@ -469,6 +493,16 @@ interface DemoRun {
   readonly finalTranscriptKeys: Set<string>;
   readonly transcriptSegments: DemoTranscriptSegment[];
   partialTranscript: string | null;
+  /** Diarization slot per speech event. The input to live attribution. */
+  readonly slots: Map<EventId, number>;
+  /** Last attribution, so a re-decision can be announced rather than applied silently. */
+  attribution: RoleAssignment | null;
+  /** Speech events appended since the last facts message: a fact's evidence window. */
+  readonly factWindow: EventId[];
+  /** Utterances already sent for coding, so a replayed segment is not re-coded. */
+  readonly codedEventIds: Set<EventId>;
+  /** Grounded observations already written, keyed sourceEventId:observation. */
+  readonly groundedKeys: Set<string>;
   readonly factKeys: Set<string>;
   readonly decisions: Map<string, { approved: boolean; eventId: EventId }>;
   nextAudioSequence: number;
@@ -560,7 +594,10 @@ async function handleDemoStart(
     runId, patientId, room, mode, startedAt: DEMO_T0 + 60_000, projectionUntil: DEMO_T0,
     status: mode === "live" ? "connecting" : "processing", interactionId: null, stream: null,
     activities: [], eventIds: [], events: [...runEvents], finalTranscriptKeys: new Set(),
-    transcriptSegments: [], partialTranscript: null, factKeys: new Set(), decisions: new Map(),
+    transcriptSegments: [], partialTranscript: null,
+    slots: new Map(), attribution: null, factWindow: [], codedEventIds: new Set(),
+    groundedKeys: new Set(),
+    factKeys: new Set(), decisions: new Map(),
     nextAudioSequence: 0, monitorStep: 0,
     initialLevel, initialRank, previousLevel: initialLevel, previousRank: initialRank,
     notificationEventId: null, error: null,
@@ -605,18 +642,24 @@ async function handleDemoStart(
       configuration: {
         transcription: {
           primaryLanguage: "en",
+          // `diarize` is the current name; `isDiarization` is deprecated but
+          // still accepted, and CONFIG_ACCEPTED echoes both. Sending both
+          // keeps an older tenant working without a second round trip.
+          diarize: true,
           isDiarization: true,
           isMultichannel: false,
           participants: [{ channel: 0, role: "multiple" }],
         },
-        mode: { type: "facts", outputLocale: "en" },
+        // factGenerationInterval sits INSIDE mode. At the top level Corti
+        // ignores it and falls back to `fixed` -- roughly 60s between fact
+        // batches, which reads on stage as the demo having hung.
+        mode: { type: "facts", outputLocale: "en", factGenerationInterval: "fast_init" },
         retentionPolicy: "none",
         audioFormat: audioFormat!,
-        factGenerationInterval: "fast_init",
       },
     });
     run.status = "recording";
-    run.stream.onMessage((message) => handleCortiMessage(run, message, run.events));
+    run.stream.onMessage((message) => handleCortiMessage(run, message, run.events, credentials, cache));
     run.stream.onClose(({ code, reason }) => {
       if (run.status === "ended" || run.status === "failed") return;
       run.status = "failed";
@@ -667,7 +710,147 @@ function replayRecordedEncounter(run: DemoRun, live: Event[]): void {
   run.status = "ready";
 }
 
-function handleCortiMessage(run: DemoRun, message: CortiStreamSocketMessage, live: Event[]): void {
+/**
+ * Code one finalized utterance, out of band.
+ *
+ * Fire-and-forget on purpose: coding must never hold up the audio stream or
+ * the fact feed. A failure degrades to no code badge (test law) and is
+ * reported as an activity, never thrown into the socket handler.
+ *
+ * The returned code is written onto the event copy in the run's branch, so it
+ * is real evidence rather than a decoration on the surface. codedEventIds
+ * keeps a replayed or duplicated segment from being coded twice.
+ */
+function codeUtterance(
+  run: DemoRun,
+  eventId: EventId,
+  quote: string,
+  credentials: ReturnType<typeof createCortiAuth> | undefined,
+  cache: DiskCache,
+): void {
+  if (credentials === undefined || quote.trim() === "") return;
+  if (run.codedEventIds.has(eventId)) return;
+  run.codedEventIds.add(eventId);
+
+  void codeText(quote, { cache, credentials })
+    .then((response) => {
+      const top = response.codes[0];
+      if (top === undefined) return;
+      const index = run.events.findIndex((event) => event.id === eventId);
+      if (index < 0) return;
+      run.events[index] = Object.freeze({ ...run.events[index]!, code: top.code });
+      activity(run, "corti.code.assigned", "CORTI CODING", `${top.code} · ${top.display}`, {
+        detail: `Coded from "${quote}"`,
+        eventIds: [eventId],
+        causedByEventIds: [eventId],
+      });
+      // A code is the input propose() waits for, so grounding runs here.
+      groundLive(run, run.events);
+    })
+    .catch(() => {
+      activity(run, "corti.code.unavailable", "CORTI CODING", "Coding unavailable for this segment", {
+        detail: "The encounter continues; no code was attached.",
+        eventIds: [eventId],
+      });
+    });
+}
+
+/**
+ * Turn coded, speaker-attributed utterances into observations the clinical
+ * engine actually reads.
+ *
+ * Until this existed, nothing said in a live encounter could move a patient's
+ * level in either direction. The engine raises on `symptom` and `hcp_concern`;
+ * the live path only ever wrote Corti's own `corti_fact`, which no rule reads.
+ * The whole conversation was inert, and the simulated monitor was the only
+ * thing with a vote.
+ *
+ * Nothing new is invented here. propose() maps a Corti code to an observation
+ * using doctor-owned data in pipeline/observations.ts, and ground() refuses any
+ * candidate whose supporting utterance does not exist or whose expected
+ * speaker did not say it. A candidate the gate discards stays discarded --
+ * that refusal is the product working, not a case to route around.
+ *
+ * Runs after coding returns, because propose() only reads an utterance that
+ * already carries a code.
+ */
+function groundLive(run: DemoRun, live: Event[]): void {
+  const { grounded } = ground(proposeObservations(run.events), run.events);
+
+  for (const fact of grounded) {
+    const key = `${fact.eventId}:${fact.observation}`;
+    if (run.groundedKeys.has(key)) continue;
+    run.groundedKeys.add(key);
+
+    const id = appendLive(live, {
+      ts: fact.ts,
+      patientId: fact.patientId,
+      room: fact.room,
+      source: "speech",
+      // Grounded FROM the supporting utterance, never from the candidate.
+      speaker: fact.speaker,
+      quote: fact.quote,
+      code: run.events.find((event) => event.id === fact.eventId)?.code ?? null,
+      observation: fact.observation,
+      value: fact.value,
+      correlationId: run.runId,
+      causedByEventIds: [fact.eventId],
+    });
+    run.eventIds.push(id);
+    activity(run, "observation.grounded", "ECHO CLINICAL", `${fact.observation.replace(/_/g, " ")} · ${fact.speaker}`, {
+      detail: `"${fact.quote}" — grounded against the utterance that carried it`,
+      eventIds: [id],
+      causedByEventIds: [fact.eventId],
+    });
+  }
+}
+
+/**
+ * Re-decide who is speaking, over every segment received so far.
+ *
+ * Ambient capture cannot decide from the first turn: two segments of a real
+ * ward conversation are routinely not enough to separate a nurse from a
+ * patient. So attribution is a fold, recomputed as evidence accumulates, and
+ * the run's events are replaced with the relabelled copies attributeLive
+ * returns. Ids, timestamps and quotes are never touched — only `speaker` is
+ * filled in — so replaying the same segments reproduces the same attribution.
+ *
+ * A change is announced, never applied quietly: a transcript that silently
+ * relabels who said what is worse than one that never labelled anything.
+ */
+function reattribute(run: DemoRun): void {
+  const result = attributeLive(run.events, run.slots, run.attribution);
+  run.events.length = 0;
+  run.events.push(...result.events);
+  run.attribution = result.assignment;
+
+  if (!result.changed) return;
+
+  const speech = run.eventIds.filter((id) => run.slots.has(id));
+  if (result.newlyResolved) {
+    activity(run, "roles.resolved", "ECHO ATTRIBUTION", `Speakers separated · ${result.assignment.method}`, {
+      detail: result.assignment.note, eventIds: speech,
+    });
+    return;
+  }
+  activity(run, "roles.reassigned", "ECHO ATTRIBUTION", `Attribution revised · ${result.assignment.method}`, {
+    detail: `${result.assignment.note} Earlier segments were relabelled to match.`,
+    eventIds: speech,
+  });
+}
+
+/**
+ * Exported for the offline fixture test: the ambient live path is the one
+ * stage a demo cannot rehearse against the real socket on request, so a
+ * captured message sequence has to be able to drive it (test law).
+ */
+export function handleCortiMessage(
+  run: DemoRun,
+  message: CortiStreamSocketMessage,
+  live: Event[],
+  credentials: ReturnType<typeof createCortiAuth> | undefined,
+  cache: DiskCache,
+): void {
   if (message.type === "transcript") {
     const segments = [...(message as CortiTranscriptMessage).data].sort((a, b) => a.time.start - b.time.start);
     for (const item of segments) {
@@ -691,35 +874,63 @@ function handleCortiMessage(run: DemoRun, message: CortiStreamSocketMessage, liv
         speakerId: item.speakerId, text: item.transcript,
       }));
       run.eventIds.push(id); run.projectionUntil = Math.max(run.projectionUntil, ts);
+      // Diarization slot in, role decided by pipeline/roles.ts below. The slot
+      // is Corti's; the role is ours, and the two are kept separate on purpose.
+      if (item.speakerId >= 0) run.slots.set(id, item.speakerId);
+      run.factWindow.push(id);
       const speaker = item.speakerId >= 0 ? `speaker ${item.speakerId + 1}` : "speaker unresolved";
       activity(run, "corti.transcript.final", "CORTI STREAMS", `Final transcript · ${speaker}`, { detail: item.transcript, eventIds: [id], at: ts });
+      codeUtterance(run, id, item.transcript, credentials, cache);
     }
+    reattribute(run);
     return;
   }
   if (message.type === "facts") {
     const created: EventId[] = [];
-    for (const fact of (message as CortiFactsMessage).facts.filter((item) => !item.isDiscarded)) {
+    // Corti supplies no segment-level evidence id, so a fact cannot be pinned
+    // to one utterance without inventing the citation. What IS known is the
+    // window: the segments finalized since the last facts message are the
+    // audio this batch was generated from. That is recorded as the causal
+    // link, and named as a window on the surface rather than dressed up as a
+    // precise quote.
+    const window = Object.freeze([...run.factWindow]);
+    for (const fact of factsOf(message as CortiFactsMessage).filter((item) => !item.isDiscarded)) {
       if (run.factKeys.has(fact.id)) continue;
       run.factKeys.add(fact.id);
       const id = appendLive(live, {
         ts: Math.max(run.projectionUntil, run.startedAt), patientId: run.patientId, room: run.room, source: "speech", speaker: "unknown",
         quote: "", code: null, observation: "corti_fact", value: fact.text,
-        correlationId: run.runId, causedByEventIds: [],
+        correlationId: run.runId, causedByEventIds: window,
       });
       run.eventIds.push(id); created.push(id);
       activity(run, "clinical_fact.created", "CORTI FACTS", `Clinical fact created · ${fact.group.replace(/-/g, " ")}`, {
-        detail: `${fact.text} · linked to encounter ${run.runId}; Corti supplied no segment-level evidence id`,
-        eventIds: [id],
+        detail: `${fact.text} · from the ${window.length} segment${window.length === 1 ? "" : "s"} since the last fact batch; Corti supplied no segment-level evidence id`,
+        eventIds: [id], causedByEventIds: window,
       });
     }
     if (created.length > 0) {
-      activity(run, "patient_history.updated", "PATIENT MEMORY", "Patient history updated from live conversation", { eventIds: created });
+      run.factWindow.length = 0;
+      activity(run, "patient_history.updated", "PATIENT MEMORY", "Patient history updated from live conversation", {
+        eventIds: created, causedByEventIds: window,
+      });
     }
     return;
   }
   if (message.type === "flushed") activity(run, "corti.stream.flushed", "CORTI STREAMS", "Buffered audio processed");
   if (message.type === "ENDED") { run.status = "ended"; activity(run, "corti.stream.ended", "CORTI STREAMS", "Live encounter ended"); }
-  if (message.type === "error") { run.status = "failed"; run.error = "Corti stream returned an error."; activity(run, "corti.stream.error", "CORTI", "Corti stream error"); }
+  if (message.type === "error") {
+    // Corti says WHY. Discarding it, as this did, makes every live failure
+    // look identical from the outside and leaves a rehearsal with nothing to
+    // debug -- an audio format rejection and a credit limit read the same.
+    const detail = (message as CortiErrorMessage).error ?? {};
+    const parts = [detail.title, detail.details, detail.status === undefined ? undefined : `status ${detail.status}`]
+      .filter((part): part is string => typeof part === "string" && part.length > 0);
+    const reason = parts.length > 0 ? parts.join(" · ") : "Corti sent an error with no detail.";
+    run.status = "failed";
+    run.error = `Corti stream error: ${reason}`;
+    console.error(`[corti stream] ${run.runId} error:`, JSON.stringify(detail));
+    activity(run, "corti.stream.error", "CORTI", "Corti stream error", { detail: reason });
+  }
 }
 
 function handleDemoAudio(
@@ -885,10 +1096,13 @@ async function sendDemoState(run: DemoRun, response: ServerResponse): Promise<vo
     ...events.flatMap((event) => event.causedByEventIds ?? []),
   ]);
   const evidenceEvents = live.filter((event) => cited.has(event.id));
+  // Speech against numbers. Reported, never scored: see engines/contradiction.
+  const contradiction = detectContradiction(live, trends.signals, run.projectionUntil);
   send(response, 200, {
     ...publicRun(run),
     patient: { patientId: run.patientId, displayId: "P-014", name: record.name, room: run.room, mrn: record.mrn },
     events, evidenceEvents, history: historyView, trends, care, priority, queue, proposals,
+    contradiction,
   });
 }
 
@@ -898,7 +1112,24 @@ function publicRun(run: DemoRun): Record<string, unknown> {
     startedAt: run.startedAt, projectionUntil: run.projectionUntil, interactionId: run.interactionId,
     monitorStep: run.monitorStep, notificationEventId: run.notificationEventId, error: run.error,
     initialLevel: run.initialLevel, initialRank: run.initialRank,
-    transcriptSegments: run.transcriptSegments, partialTranscript: run.partialTranscript,
+    // The raw Corti segment carries a diarization slot; the ECHO role and the
+    // Corti code live on the event. Joined here, at the edge, so the stored
+    // segment stays exactly what the socket delivered.
+    transcriptSegments: run.transcriptSegments.map((segment) => {
+      const event = run.events.find((item) => item.id === segment.eventId);
+      return {
+        ...segment,
+        speaker: event?.speaker ?? "unknown",
+        code: event?.code ?? null,
+      };
+    }),
+    partialTranscript: run.partialTranscript,
+    attribution: run.attribution === null ? null : {
+      resolved: run.attribution.resolved,
+      method: run.attribution.method,
+      note: run.attribution.note,
+      slots: run.attribution.slots,
+    },
     activities: run.activities,
   };
 }
@@ -1010,22 +1241,96 @@ function handleNurseRound(
  * property of the ward, not of the patient, so computing it twice by two
  * routes would eventually produce two different answers for the same question.
  */
-function wardQueue(events: readonly Event[], now: Millis): readonly PatientPriority[] {
+/**
+ * The ward board: the ranked queue AND the trends each rank was derived from.
+ *
+ * wardQueue() already computed the trends and then dropped them on the floor,
+ * so the ward screen could only show a status dot per bed and had to send the
+ * reader to a side panel to learn anything. Returning both lets the floor plan
+ * carry each patient's own trajectory without a second pass over the log --
+ * which matters, because this runs for all eleven patients on every request.
+ *
+ * Nothing here is new intelligence. It is the same fold, kept instead of
+ * discarded.
+ */
+/**
+ * How far back the board looks to decide what each patient's level WAS.
+ *
+ * One demo step, deliberately: the board's "previous" has to be far enough
+ * back that a patient who climbed during the step actually reads as changed,
+ * and near enough that it still describes this shift rather than last week.
+ * Tying it to DEMO_STEP_MS keeps the scrubber and the badge telling the same
+ * story -- step back one notch and the delta you were shown is the delta you
+ * now see as the level.
+ */
+export const PREVIOUS_LEVEL_LOOKBACK_MS = DEMO_STEP_MS;
+
+function wardBoard(
+  events: readonly Event[],
+  now: Millis,
+): { readonly queue: readonly PatientPriority[]; readonly trends: ReadonlyMap<string, PatientTrends> } {
+  return foldWard(events, now, previousLevels(events, now));
+}
+
+/**
+ * One fold of the ward at one moment. `known` supplies each patient's prior
+ * level; it is passed in rather than remembered so this stays a pure function
+ * of (events, now) and replay to T still reproduces T exactly.
+ */
+function foldWard(
+  events: readonly Event[],
+  now: Millis,
+  known: ReadonlyMap<string, PriorityLevel>,
+): { readonly queue: readonly PatientPriority[]; readonly trends: ReadonlyMap<string, PatientTrends> } {
   const inputs: PatientPriorityInput[] = [];
+  const trendsById = new Map<string, PatientTrends>();
   for (const patientId of ALL_PATIENTS) {
     const view = patientHistory(events, loadRecord(patientId), now);
     if (view === undefined) continue; // a missing chart is a missing card
     const trends = patientTrend(view, now);
+    trendsById.set(patientId, trends);
     const care = projectPatientCare(events, view, trends, now);
     inputs.push({
       patientId,
       trends,
       history: view,
-      previousLevel: null,
+      previousLevel: known.get(patientId) ?? null,
       careGaps: care.gaps,
     });
   }
-  return prioritize(inputs, now);
+  return { queue: prioritize(inputs, now), trends: trendsById };
+}
+
+/**
+ * What the ward looked like one lookback ago, as level per patient.
+ *
+ * This is a SECOND full fold -- eleven charts, trends and care gaps again --
+ * so it is skipped whenever it could not say anything: if the lookback lands
+ * before the first event in the slice there is no history to fold, and the
+ * honest answer is "unknown", not GREEN. An empty map means every row reports
+ * previousLevel: null and the UI shows no delta, which is what it did before
+ * this existed.
+ */
+function previousLevels(
+  events: readonly Event[],
+  now: Millis,
+): ReadonlyMap<string, PriorityLevel> {
+  const earlier = now - PREVIOUS_LEVEL_LOOKBACK_MS;
+  let firstTs = Infinity;
+  for (const event of events) if (event.ts < firstTs) firstTs = event.ts;
+  if (earlier < firstTs) return new Map();
+
+  const levels = new Map<string, PriorityLevel>();
+  // `new Map()` on the inner call, never previousLevels() again: the prior
+  // fold has no prior of its own, and that is what stops this recursing.
+  for (const row of foldWard(events, earlier, new Map()).queue) {
+    levels.set(row.patientId, row.level);
+  }
+  return levels;
+}
+
+function wardQueue(events: readonly Event[], now: Millis): readonly PatientPriority[] {
+  return wardBoard(events, now).queue;
 }
 
 /** Collect a JSON request body, with a cap so a bad client cannot exhaust memory. */
@@ -1173,6 +1478,41 @@ const CONTENT_TYPE: Readonly<Record<string, string>> = Object.freeze({
   ".txt": "text/plain; charset=utf-8",
   ".map": "application/json; charset=utf-8",
 });
+
+/** The Next static-export root. Every served file must resolve inside it. */
+const ROOT = "web-next/out";
+/** NUL, built rather than escaped so no toolchain can mangle the literal. */
+const NUL = String.fromCharCode(0);
+
+/**
+ * Resolve a request path to a file inside the Next build, or null if it does
+ * not stay there.
+ *
+ * THE DECODE IS THE WHOLE POINT. The App Router emits a chunk directory named
+ * literally `[patientId]`, so the browser requests
+ * `/_next/static/chunks/app/patients/%5BpatientId%5D/page-<hash>.js`. Joining
+ * the raw pathname looked for a directory called `%5BpatientId%5D`, which does
+ * not exist, so the chunk 404'd and /patients/<id>/ rendered as an empty
+ * skeleton forever — the hero screen, blank, with only a console 404 to say so.
+ *
+ * Decoding first is also why the containment check has to come after it: a
+ * crafted `%2e%2e%2f` only becomes `../` once decoded, so a guard applied to
+ * the encoded form would be checking the wrong string.
+ */
+function buildPath(pathname: string, ...tail: readonly string[]): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null; // Malformed percent-encoding. Not a path we serve.
+  }
+  if (decoded.includes(NUL)) return null;
+  const candidate = join(ROOT, decoded.replace(/^\//, ""), ...tail);
+  const root = resolve(ROOT);
+  const full = resolve(candidate);
+  if (full !== root && !full.startsWith(root + sep)) return null;
+  return candidate;
+}
 
 function sendAsset(response: ServerResponse, path: string): void {
   const body = readFileSync(path);

@@ -181,6 +181,99 @@ Both fields required. Recording comes from the audio-bridge websocket.
 `wss://api.<env>.corti.app/audio-bridge/v2/interactions/<id>/streams?tenant-name=<tenant>`
 See `src/corti/stream.ts` for the implemented transport.
 
+### Server message shapes — verified against `@corti/sdk@5.0.0`
+
+- **The facts batch key is `fact`, SINGULAR.** `{ type: "facts", fact: [...] }`,
+  per `StreamFactsMessage`. Reading `message.facts` returns undefined; calling
+  `.filter` on it throws inside the socket listener, and because that listener
+  runs on the socket's event-loop turn the exception becomes an unhandled
+  'error' event that **kills the whole server mid-encounter**. This is what a
+  live rehearsal looked like: transcription stopped dead and no facts ever
+  appeared, because the process was gone.
+- Transcript batches DO use the plural-ish `data`:
+  `{ type: "transcript", data: StreamTranscript[] }`. Do not "fix" this one.
+- `StreamTranscript.id` is the **interaction id**, not a per-segment id — the
+  SDK comment says "Interaction ID that the transcript segments are associated
+  with". Do not use it alone as a segment key; key on time + speakerId too.
+- `StreamTranscript.speakerId` is `-1` when diarization is off.
+- Any handler running off this socket must be wrapped: one malformed message
+  may cost at most one message, never the process.
+
+### Config shape — verified against `@corti/sdk@5.0.0` generated types
+
+- **`factGenerationInterval` lives INSIDE `mode`.** Not at the top level of
+  the config. Placed at the top level it is ignored silently and the stream
+  falls back to the `fixed` default: ~60s between fact batches. This cost us
+  a demo rehearsal — facts looked hung for two minutes.
+  `mode: { type, outputLocale, factGenerationInterval }`.
+  - `fixed` (default): ~60s cadence.
+  - `fast_init`: logarithmic — first batch ~10s, then ~20s, ~26s, widening
+    to 60s. Costs more credits and produces more near-duplicates.
+- **`transcription.isDiarization` is deprecated, renamed `diarize`.** Both are
+  still accepted and `CONFIG_ACCEPTED` echoes both; `diarize` wins if both are
+  sent. We send both.
+- `transcription.participants` is required, not optional.
+
+### Audio
+
+Supported stream MIME types: `audio/ogg`, `audio/webm`, `audio/opus`,
+`audio/vorbis`, `audio/mpeg|mp3|mpeg3`, `audio/flac`, `audio/mp4|m4a`. For
+`audio/ogg` and `audio/webm` an optional codec parameter is allowed, and the
+allowed codecs are `opus` and `vorbis`. `audio/webm;codecs=opus` — what
+MediaRecorder gives us in Chrome — is supported.
+
+Omitting `audioFormat` makes the server auto-detect from the first chunk with
+ffprobe. Supplying it is recommended; an unsupported MIME type gives
+`CONFIG_REJECTED`, and audio that does not match the declared MIME type
+returns audio validation errors on the socket — **and the docs warn this can
+error silently in some cases**, so a stream that connects is not proof the
+audio is being decoded.
+
+Corti's documented capture guidance: **250ms chunks** ("sending much smaller
+chunks more frequently can degrade recognition accuracy"), **16 kHz**, and
+streamed at or near real-time rather than faster.
+
+### Measured stream latency (replayed fixtures/audio/test_twovoice_01, 2026-08-21)
+
+Streaming a real 93.7s two-voice encounter at real-time pace, `mode: facts`
+with diarization:
+
+- **First finalized transcript batch: ~21s.** Nothing at all arrives before it.
+- Batches after that land roughly every 13-18s, several segments at a time.
+- **Corti sends NO interim (`final: false`) transcripts in this mode** — zero
+  observed across the whole encounter. There is nothing to display early.
+- Facts follow their transcripts by ~1.5-2s once `factGenerationInterval` is
+  correctly placed inside `mode`. That half is fast.
+- Coding returns within the same second as the segment.
+
+This is Corti's own finalization cadence, not chunking: re-encoding the same
+audio with ~240ms WebM clusters (what MediaRecorder emits) instead of ~5s
+clusters changed first output by 0.8s — 21.5s against 22.3s. Do not chase it
+with chunk sizes. No interim, latency or endpointing option exists in
+`StreamConfigTranscription` (`primaryLanguage`, `diarize`, `isMultichannel`,
+`participants` only), so it is not tunable from our side.
+
+**Demo consequence:** budget ~25s of conversation before anything appears on
+screen, and say so on the surface rather than letting it look hung.
+
+`participants[].role` is a closed set: `doctor`, `patient`, `multiple`.
+`multiple` is correct for single-channel ambient capture.
+
+### Ambient two-speaker capture (learned on stage, not from docs)
+
+Browser `getUserMedia` defaults — `echoCancellation`, `noiseSuppression`,
+`autoGainControl` — are tuned for one near-field speaker on a call. In a
+two-person ambient encounter they gate the further speaker out as background,
+which presents as the patient's sentences going missing from the transcript.
+Turn all three OFF for ambient capture.
+
+### SDKs
+
+`@corti/sdk` (v5, `corticph/corti-sdk-javascript`, Fern-generated) carries the
+authoritative request/response types — worth installing purely to read them,
+even where the hand-rolled transport stays. `@corti/ambient-web` is a web
+component for ambient capture. Neither is on ECHO's path today.
+
 ## Coding
 
 `POST /v2/tools/coding/` — see `src/corti/coding.ts`. Body:
