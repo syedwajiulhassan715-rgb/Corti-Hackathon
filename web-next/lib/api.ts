@@ -114,6 +114,32 @@ export interface DemoTranscriptSegment {
   endSeconds: number;
   speakerId: number;
   text: string;
+  /** The role ECHO assigned to this segment's diarization slot. */
+  speaker: "clinician" | "patient" | "nurse" | "family" | "unknown";
+  /** Corti medical code for this utterance, once coding returns. */
+  code: string | null;
+}
+
+export type RoleMethod =
+  | "self-identification"
+  | "question-density"
+  | "clinical-vocabulary"
+  | "tie-unresolved"
+  | "single-slot-unresolved"
+  | "no-speech-unresolved";
+
+export interface DemoAttribution {
+  resolved: boolean;
+  method: RoleMethod;
+  note: string;
+  slots: {
+    slot: number;
+    utterances: number;
+    questions: number;
+    questionRate: number;
+    clinicalRate: number;
+    role: "clinician" | "patient" | "nurse" | "family" | "unknown";
+  }[];
 }
 
 export interface DemoRunSnapshot {
@@ -132,6 +158,7 @@ export interface DemoRunSnapshot {
   error: string | null;
   transcriptSegments: DemoTranscriptSegment[];
   partialTranscript: string | null;
+  attribution: DemoAttribution | null;
   activities: DemoActivity[];
   patient?: { patientId: string; displayId: string; name: string; room: string; mrn: string };
   events?: EchoEvent[];

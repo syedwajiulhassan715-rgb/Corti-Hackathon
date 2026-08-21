@@ -31,6 +31,7 @@ import {
   resetDemo,
   sendDemoAudio,
   type DemoActivity,
+  type DemoAttribution,
   type DemoRunSnapshot,
   type EchoEvent,
   type Proposal,
@@ -490,17 +491,25 @@ function Encounter({
   const recording = isLive && run.status === "recording" && !captureFailed;
   const failed = isLive && (run.status === "failed" || captureFailed);
   const title = failed ? "Live capture interrupted" : recording ? "Corti is listening" : run.status === "processing" ? "Corti is finalizing" : isLive ? "Live encounter captured" : "Recorded encounter fallback";
+  // Two labels, deliberately separate: the diarization SLOT is Corti's, the
+  // clinical ROLE is ECHO's. Collapsing them would hide which system decided.
   const rows = isLive && run.transcriptSegments.length
     ? run.transcriptSegments.map((segment) => ({
         id: segment.eventId,
-        label: segment.speakerId >= 0 ? `Corti speaker ${segment.speakerId + 1}` : "Speaker unresolved",
+        label: roleLabel(segment.speaker),
+        speaker: segment.speaker,
         text: segment.text,
-        meta: `Final · ${segment.startSeconds.toFixed(1)}s · clinical role unresolved`,
+        code: segment.code,
+        meta: segment.speakerId >= 0
+          ? `Corti speaker ${segment.speakerId + 1} · ${segment.startSeconds.toFixed(1)}s`
+          : `Slot unresolved · ${segment.startSeconds.toFixed(1)}s`,
       }))
     : transcript.map((event) => ({
         id: event.id,
-        label: isLive ? "Speaker unresolved" : event.speaker,
+        label: roleLabel(event.speaker),
+        speaker: event.speaker,
         text: event.quote,
+        code: event.code ?? null,
         meta: `${isLive ? "Final Corti segment" : "Recorded fixture"} · ${event.id}`,
       }));
 
@@ -538,13 +547,28 @@ function Encounter({
         </div>
         <div className="min-h-[180px]" aria-live="polite">
           <p className="text-[10px] font-bold uppercase tracking-[.16em] text-faint">Finalized transcript</p>
+          {isLive && <AttributionBanner attribution={run.attribution} />}
           <div className="mt-3 space-y-4">
             {rows.length ? rows.slice(-7).map((row) => (
               <div key={row.id} className="transcript-enter grid grid-cols-[112px_1fr] gap-3">
-                <span className="pt-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--accent)]">{row.label}</span>
+                <span
+                  className={`pt-0.5 text-[10px] font-bold uppercase tracking-wide ${roleTone(row.speaker)}`}
+                >
+                  {row.label}
+                </span>
                 <div>
                   <p className="text-[14px] leading-relaxed">{row.text}</p>
-                  <p className="mt-1 text-[9px] uppercase tracking-wide text-faint">{row.meta}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <p className="text-[9px] uppercase tracking-wide text-faint">{row.meta}</p>
+                    {row.code && (
+                      <span
+                        className="code-badge rounded-sm border border-[#4b8b79]/50 bg-[#4b8b79]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[var(--accent)]"
+                        title="Medical code returned by Corti /v2/tools/coding/"
+                      >
+                        Corti code · {row.code}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             )) : (
@@ -572,6 +596,7 @@ function Memory({ facts, run, memoryUpdated }: { facts: EchoEvent[]; run: DemoRu
         source={run.mode === "live" ? "CORTI FACTS → ECHO EVENT LOG" : "RECORDED SYNTHETIC FACT → ECHO EVENT LOG"}
         icon={<FileClock size={18} />}
       />
+      <ExtractionPulse run={run} factCount={facts.length} />
       <div className="mt-6 grid gap-5 md:grid-cols-[1fr_auto_1fr]">
         <div className="border-l border-line pl-4">
           <p className="text-[10px] font-bold uppercase tracking-[.14em] text-faint">Before encounter</p>
@@ -971,6 +996,108 @@ function SectionHead({ number, eyebrow, title, source, icon, inverse }: { number
         <h2 className="mt-1 text-[22px] font-medium tracking-tight">{title}</h2>
         <p className={`mt-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[.12em] ${inverse ? "text-white/40" : "text-faint"}`}>{icon}{source}</p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Corti is working and nothing has come back yet.
+ *
+ * Deliberately not a progress bar: nothing here knows how much audio is left
+ * to process, and a bar that invents a percentage would be the one dishonest
+ * pixel on the screen. A travelling sheen says "working" and claims nothing.
+ */
+function ExtractionPulse({ run, factCount }: { run: DemoRunSnapshot; factCount: number }) {
+  const working = run.status === "recording" || run.status === "processing";
+  if (!working) return null;
+
+  const label = run.status === "processing"
+    ? "Corti is finalizing the encounter"
+    : factCount === 0
+      ? "Corti is listening for clinical facts"
+      : "Corti is extracting further facts";
+
+  return (
+    <div className="mt-5" aria-live="polite">
+      <div className="flex items-center gap-3">
+        <div className="flex h-4 items-end gap-[3px]" aria-hidden="true">
+          {[0, 1, 2, 3, 4].map((bar) => (
+            <span
+              key={bar}
+              className="waveform-bar w-[3px] rounded-sm bg-[var(--accent)]"
+              style={{ height: "100%", animationDelay: `${bar * 0.12}s` }}
+            />
+          ))}
+        </div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--accent)]">{label}</p>
+        {factCount > 0 && (
+          <span className="text-[10px] uppercase tracking-wide text-faint">
+            {factCount} fact{factCount === 1 ? "" : "s"} so far
+          </span>
+        )}
+      </div>
+      <div className="extracting mt-2 h-[2px] w-full rounded-full" aria-hidden="true" />
+    </div>
+  );
+}
+
+/** Role name for a speaker. 'unknown' is stated as a refusal, not hidden. */
+function roleLabel(speaker: string): string {
+  if (speaker === "clinician" || speaker === "nurse") return "Clinician";
+  if (speaker === "patient") return "Patient";
+  if (speaker === "family") return "Family";
+  return "Role pending";
+}
+
+/** Clinician and patient must be separable at a glance from the back of a room. */
+function roleTone(speaker: string): string {
+  if (speaker === "clinician" || speaker === "nurse") return "text-[#7fb4ff]";
+  if (speaker === "patient") return "text-[var(--accent)]";
+  return "text-faint";
+}
+
+/**
+ * What diarization decided, and on what evidence.
+ *
+ * Shown even when it decided nothing: a refusal to attribute is the honest
+ * outcome of a one-speaker recording, and hiding it would let the demo imply
+ * an attribution the system never made.
+ */
+function AttributionBanner({ attribution }: { attribution: DemoAttribution | null }) {
+  if (!attribution) {
+    return (
+      <div className="mt-3 flex items-center gap-2 rounded border border-line bg-[var(--sunk)]/40 px-3 py-2">
+        <span className="listening-dot h-1.5 w-1.5 rounded-full bg-faint" />
+        <p className="text-[10px] uppercase tracking-wide text-faint">Listening for a second speaker…</p>
+      </div>
+    );
+  }
+
+  const tone = attribution.resolved ? "border-[#4b8b79]/50 bg-[#4b8b79]/10" : "border-line bg-[var(--sunk)]/40";
+
+  return (
+    <div className={`attribution-enter mt-3 rounded border px-3 py-2 ${tone}`} aria-live="polite">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`text-[10px] font-bold uppercase tracking-wide ${attribution.resolved ? "text-[var(--accent)]" : "text-faint"}`}>
+          {attribution.resolved ? "Speakers separated" : "Roles not assigned"}
+        </span>
+        <span className="rounded-sm border border-line px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-dim">
+          {attribution.method.replace(/-/g, " ")}
+        </span>
+      </div>
+      <p className="mt-1 text-[10px] leading-relaxed text-faint">{attribution.note}</p>
+      {attribution.slots.length > 1 && (
+        <div className="mt-2 flex flex-wrap gap-3">
+          {attribution.slots.map((slot) => (
+            <span key={slot.slot} className="text-[9px] uppercase tracking-wide text-faint">
+              <span className={roleTone(slot.role)}>{roleLabel(slot.role)}</span>
+              {" · slot "}{slot.slot + 1}
+              {" · "}{slot.utterances} turns
+              {" · "}{Math.round(slot.questionRate * 100)}% questions
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -32,6 +32,9 @@ import {
 } from "../world/patients.ts";
 import type { PatientPriority, PatientTrends, PriorityLevel } from "../contracts/index.ts";
 import { createCortiAuth } from "../corti/auth.ts";
+import { attributeLive } from "../pipeline/liveAttribution.ts";
+import type { RoleAssignment } from "../pipeline/roles.ts";
+import { codeText } from "../corti/coding.ts";
 import { DiskCache } from "../corti/cache.ts";
 import { createInteraction, patientFromRecord } from "../corti/interactions.ts";
 import {
@@ -468,7 +471,7 @@ interface DemoTranscriptSegment {
   readonly text: string;
 }
 
-interface DemoRun {
+export interface DemoRun {
   readonly runId: string;
   readonly patientId: string;
   readonly room: string;
@@ -485,6 +488,14 @@ interface DemoRun {
   readonly finalTranscriptKeys: Set<string>;
   readonly transcriptSegments: DemoTranscriptSegment[];
   partialTranscript: string | null;
+  /** Diarization slot per speech event. The input to live attribution. */
+  readonly slots: Map<EventId, number>;
+  /** Last attribution, so a re-decision can be announced rather than applied silently. */
+  attribution: RoleAssignment | null;
+  /** Speech events appended since the last facts message: a fact's evidence window. */
+  readonly factWindow: EventId[];
+  /** Utterances already sent for coding, so a replayed segment is not re-coded. */
+  readonly codedEventIds: Set<EventId>;
   readonly factKeys: Set<string>;
   readonly decisions: Map<string, { approved: boolean; eventId: EventId }>;
   nextAudioSequence: number;
@@ -576,7 +587,9 @@ async function handleDemoStart(
     runId, patientId, room, mode, startedAt: DEMO_T0 + 60_000, projectionUntil: DEMO_T0,
     status: mode === "live" ? "connecting" : "processing", interactionId: null, stream: null,
     activities: [], eventIds: [], events: [...runEvents], finalTranscriptKeys: new Set(),
-    transcriptSegments: [], partialTranscript: null, factKeys: new Set(), decisions: new Map(),
+    transcriptSegments: [], partialTranscript: null,
+    slots: new Map(), attribution: null, factWindow: [], codedEventIds: new Set(),
+    factKeys: new Set(), decisions: new Map(),
     nextAudioSequence: 0, monitorStep: 0,
     initialLevel, initialRank, previousLevel: initialLevel, previousRank: initialRank,
     notificationEventId: null, error: null,
@@ -632,7 +645,7 @@ async function handleDemoStart(
       },
     });
     run.status = "recording";
-    run.stream.onMessage((message) => handleCortiMessage(run, message, run.events));
+    run.stream.onMessage((message) => handleCortiMessage(run, message, run.events, credentials, cache));
     run.stream.onClose(({ code, reason }) => {
       if (run.status === "ended" || run.status === "failed") return;
       run.status = "failed";
@@ -683,7 +696,95 @@ function replayRecordedEncounter(run: DemoRun, live: Event[]): void {
   run.status = "ready";
 }
 
-function handleCortiMessage(run: DemoRun, message: CortiStreamSocketMessage, live: Event[]): void {
+/**
+ * Code one finalized utterance, out of band.
+ *
+ * Fire-and-forget on purpose: coding must never hold up the audio stream or
+ * the fact feed. A failure degrades to no code badge (test law) and is
+ * reported as an activity, never thrown into the socket handler.
+ *
+ * The returned code is written onto the event copy in the run's branch, so it
+ * is real evidence rather than a decoration on the surface. codedEventIds
+ * keeps a replayed or duplicated segment from being coded twice.
+ */
+function codeUtterance(
+  run: DemoRun,
+  eventId: EventId,
+  quote: string,
+  credentials: ReturnType<typeof createCortiAuth> | undefined,
+  cache: DiskCache,
+): void {
+  if (credentials === undefined || quote.trim() === "") return;
+  if (run.codedEventIds.has(eventId)) return;
+  run.codedEventIds.add(eventId);
+
+  void codeText(quote, { cache, credentials })
+    .then((response) => {
+      const top = response.codes[0];
+      if (top === undefined) return;
+      const index = run.events.findIndex((event) => event.id === eventId);
+      if (index < 0) return;
+      run.events[index] = Object.freeze({ ...run.events[index]!, code: top.code });
+      activity(run, "corti.code.assigned", "CORTI CODING", `${top.code} · ${top.display}`, {
+        detail: `Coded from "${quote}"`,
+        eventIds: [eventId],
+        causedByEventIds: [eventId],
+      });
+    })
+    .catch(() => {
+      activity(run, "corti.code.unavailable", "CORTI CODING", "Coding unavailable for this segment", {
+        detail: "The encounter continues; no code was attached.",
+        eventIds: [eventId],
+      });
+    });
+}
+
+/**
+ * Re-decide who is speaking, over every segment received so far.
+ *
+ * Ambient capture cannot decide from the first turn: two segments of a real
+ * ward conversation are routinely not enough to separate a nurse from a
+ * patient. So attribution is a fold, recomputed as evidence accumulates, and
+ * the run's events are replaced with the relabelled copies attributeLive
+ * returns. Ids, timestamps and quotes are never touched — only `speaker` is
+ * filled in — so replaying the same segments reproduces the same attribution.
+ *
+ * A change is announced, never applied quietly: a transcript that silently
+ * relabels who said what is worse than one that never labelled anything.
+ */
+function reattribute(run: DemoRun): void {
+  const result = attributeLive(run.events, run.slots, run.attribution);
+  run.events.length = 0;
+  run.events.push(...result.events);
+  run.attribution = result.assignment;
+
+  if (!result.changed) return;
+
+  const speech = run.eventIds.filter((id) => run.slots.has(id));
+  if (result.newlyResolved) {
+    activity(run, "roles.resolved", "ECHO ATTRIBUTION", `Speakers separated · ${result.assignment.method}`, {
+      detail: result.assignment.note, eventIds: speech,
+    });
+    return;
+  }
+  activity(run, "roles.reassigned", "ECHO ATTRIBUTION", `Attribution revised · ${result.assignment.method}`, {
+    detail: `${result.assignment.note} Earlier segments were relabelled to match.`,
+    eventIds: speech,
+  });
+}
+
+/**
+ * Exported for the offline fixture test: the ambient live path is the one
+ * stage a demo cannot rehearse against the real socket on request, so a
+ * captured message sequence has to be able to drive it (test law).
+ */
+export function handleCortiMessage(
+  run: DemoRun,
+  message: CortiStreamSocketMessage,
+  live: Event[],
+  credentials: ReturnType<typeof createCortiAuth> | undefined,
+  cache: DiskCache,
+): void {
   if (message.type === "transcript") {
     const segments = [...(message as CortiTranscriptMessage).data].sort((a, b) => a.time.start - b.time.start);
     for (const item of segments) {
@@ -707,29 +808,45 @@ function handleCortiMessage(run: DemoRun, message: CortiStreamSocketMessage, liv
         speakerId: item.speakerId, text: item.transcript,
       }));
       run.eventIds.push(id); run.projectionUntil = Math.max(run.projectionUntil, ts);
+      // Diarization slot in, role decided by pipeline/roles.ts below. The slot
+      // is Corti's; the role is ours, and the two are kept separate on purpose.
+      if (item.speakerId >= 0) run.slots.set(id, item.speakerId);
+      run.factWindow.push(id);
       const speaker = item.speakerId >= 0 ? `speaker ${item.speakerId + 1}` : "speaker unresolved";
       activity(run, "corti.transcript.final", "CORTI STREAMS", `Final transcript · ${speaker}`, { detail: item.transcript, eventIds: [id], at: ts });
+      codeUtterance(run, id, item.transcript, credentials, cache);
     }
+    reattribute(run);
     return;
   }
   if (message.type === "facts") {
     const created: EventId[] = [];
+    // Corti supplies no segment-level evidence id, so a fact cannot be pinned
+    // to one utterance without inventing the citation. What IS known is the
+    // window: the segments finalized since the last facts message are the
+    // audio this batch was generated from. That is recorded as the causal
+    // link, and named as a window on the surface rather than dressed up as a
+    // precise quote.
+    const window = Object.freeze([...run.factWindow]);
     for (const fact of (message as CortiFactsMessage).facts.filter((item) => !item.isDiscarded)) {
       if (run.factKeys.has(fact.id)) continue;
       run.factKeys.add(fact.id);
       const id = appendLive(live, {
         ts: Math.max(run.projectionUntil, run.startedAt), patientId: run.patientId, room: run.room, source: "speech", speaker: "unknown",
         quote: "", code: null, observation: "corti_fact", value: fact.text,
-        correlationId: run.runId, causedByEventIds: [],
+        correlationId: run.runId, causedByEventIds: window,
       });
       run.eventIds.push(id); created.push(id);
       activity(run, "clinical_fact.created", "CORTI FACTS", `Clinical fact created · ${fact.group.replace(/-/g, " ")}`, {
-        detail: `${fact.text} · linked to encounter ${run.runId}; Corti supplied no segment-level evidence id`,
-        eventIds: [id],
+        detail: `${fact.text} · from the ${window.length} segment${window.length === 1 ? "" : "s"} since the last fact batch; Corti supplied no segment-level evidence id`,
+        eventIds: [id], causedByEventIds: window,
       });
     }
     if (created.length > 0) {
-      activity(run, "patient_history.updated", "PATIENT MEMORY", "Patient history updated from live conversation", { eventIds: created });
+      run.factWindow.length = 0;
+      activity(run, "patient_history.updated", "PATIENT MEMORY", "Patient history updated from live conversation", {
+        eventIds: created, causedByEventIds: window,
+      });
     }
     return;
   }
@@ -914,7 +1031,24 @@ function publicRun(run: DemoRun): Record<string, unknown> {
     startedAt: run.startedAt, projectionUntil: run.projectionUntil, interactionId: run.interactionId,
     monitorStep: run.monitorStep, notificationEventId: run.notificationEventId, error: run.error,
     initialLevel: run.initialLevel, initialRank: run.initialRank,
-    transcriptSegments: run.transcriptSegments, partialTranscript: run.partialTranscript,
+    // The raw Corti segment carries a diarization slot; the ECHO role and the
+    // Corti code live on the event. Joined here, at the edge, so the stored
+    // segment stays exactly what the socket delivered.
+    transcriptSegments: run.transcriptSegments.map((segment) => {
+      const event = run.events.find((item) => item.id === segment.eventId);
+      return {
+        ...segment,
+        speaker: event?.speaker ?? "unknown",
+        code: event?.code ?? null,
+      };
+    }),
+    partialTranscript: run.partialTranscript,
+    attribution: run.attribution === null ? null : {
+      resolved: run.attribution.resolved,
+      method: run.attribution.method,
+      note: run.attribution.note,
+      slots: run.attribution.slots,
+    },
     activities: run.activities,
   };
 }
