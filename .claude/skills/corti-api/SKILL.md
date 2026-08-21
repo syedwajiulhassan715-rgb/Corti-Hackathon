@@ -233,6 +233,32 @@ Corti's documented capture guidance: **250ms chunks** ("sending much smaller
 chunks more frequently can degrade recognition accuracy"), **16 kHz**, and
 streamed at or near real-time rather than faster.
 
+### Measured stream latency (replayed fixtures/audio/test_twovoice_01, 2026-08-21)
+
+Streaming a real 93.7s two-voice encounter at real-time pace, `mode: facts`
+with diarization:
+
+- **First finalized transcript batch: ~21s.** Nothing at all arrives before it.
+- Batches after that land roughly every 13-18s, several segments at a time.
+- **Corti sends NO interim (`final: false`) transcripts in this mode** — zero
+  observed across the whole encounter. There is nothing to display early.
+- Facts follow their transcripts by ~1.5-2s once `factGenerationInterval` is
+  correctly placed inside `mode`. That half is fast.
+- Coding returns within the same second as the segment.
+
+This is Corti's own finalization cadence, not chunking: re-encoding the same
+audio with ~240ms WebM clusters (what MediaRecorder emits) instead of ~5s
+clusters changed first output by 0.8s — 21.5s against 22.3s. Do not chase it
+with chunk sizes. No interim, latency or endpointing option exists in
+`StreamConfigTranscription` (`primaryLanguage`, `diarize`, `isMultichannel`,
+`participants` only), so it is not tunable from our side.
+
+**Demo consequence:** budget ~25s of conversation before anything appears on
+screen, and say so on the surface rather than letting it look hung.
+
+`participants[].role` is a closed set: `doctor`, `patient`, `multiple`.
+`multiple` is correct for single-channel ambient capture.
+
 ### Ambient two-speaker capture (learned on stage, not from docs)
 
 Browser `getUserMedia` defaults — `echoCancellation`, `noiseSuppression`,

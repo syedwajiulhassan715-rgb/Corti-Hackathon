@@ -40,6 +40,7 @@ import { createInteraction, patientFromRecord } from "../corti/interactions.ts";
 import {
   connectCortiStream,
   factsOf,
+  type CortiErrorMessage,
   type CortiFactsMessage,
   type CortiStreamSocketMessage,
   type CortiTranscriptMessage,
@@ -859,7 +860,19 @@ export function handleCortiMessage(
   }
   if (message.type === "flushed") activity(run, "corti.stream.flushed", "CORTI STREAMS", "Buffered audio processed");
   if (message.type === "ENDED") { run.status = "ended"; activity(run, "corti.stream.ended", "CORTI STREAMS", "Live encounter ended"); }
-  if (message.type === "error") { run.status = "failed"; run.error = "Corti stream returned an error."; activity(run, "corti.stream.error", "CORTI", "Corti stream error"); }
+  if (message.type === "error") {
+    // Corti says WHY. Discarding it, as this did, makes every live failure
+    // look identical from the outside and leaves a rehearsal with nothing to
+    // debug -- an audio format rejection and a credit limit read the same.
+    const detail = (message as CortiErrorMessage).error ?? {};
+    const parts = [detail.title, detail.details, detail.status === undefined ? undefined : `status ${detail.status}`]
+      .filter((part): part is string => typeof part === "string" && part.length > 0);
+    const reason = parts.length > 0 ? parts.join(" · ") : "Corti sent an error with no detail.";
+    run.status = "failed";
+    run.error = `Corti stream error: ${reason}`;
+    console.error(`[corti stream] ${run.runId} error:`, JSON.stringify(detail));
+    activity(run, "corti.stream.error", "CORTI", "Corti stream error", { detail: reason });
+  }
 }
 
 function handleDemoAudio(

@@ -591,7 +591,9 @@ function Encounter({
               </div>
             )) : (
               <p className="py-8 text-[12px] text-faint">
-                {recording ? "Final Corti segments will appear as they are produced." : run.status === "processing" ? "Waiting for final Corti output…" : "No transcript event has been persisted."}
+                {recording
+                  ? "Corti finalizes its first transcript batch around 20 seconds in, and in batches after that — it sends no interim results in this mode. Keep the conversation going."
+                  : run.status === "processing" ? "Waiting for final Corti output…" : "No transcript event has been persisted."}
               </p>
             )}
             {run.partialTranscript && (
@@ -1032,7 +1034,7 @@ function ExtractionPulse({ run, factCount }: { run: DemoRunSnapshot; factCount: 
   const label = run.status === "processing"
     ? "Corti is finalizing the encounter"
     : factCount === 0
-      ? "Corti is listening for clinical facts"
+      ? "Corti is listening — first facts follow the first transcript batch"
       : "Corti is extracting further facts";
 
   return (

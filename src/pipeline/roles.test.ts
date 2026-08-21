@@ -58,12 +58,15 @@ const TWO_VOICES: readonly (readonly [number, string])[] = [
 
 // ------------------------------------------------- path 1: two or more slots
 
-test("two slots: the higher question rate becomes the clinician", () => {
+test("two slots: the one who addresses the other becomes the clinician", () => {
   const { events, slots } = conversation(TWO_VOICES);
   const result = assignRoles(events, slots);
 
   assert.equal(result.resolved, true);
-  assert.equal(result.method, "question-density");
+  // Register decides before turn shape now; the assignment is the same one
+  // question density used to reach, by a signal that does not invert on an
+  // inquisitive patient.
+  assert.equal(result.method, "address-vs-report");
   assert.deepEqual(
     result.events.map((e) => e.speaker),
     ["clinician", "patient", "clinician", "patient", "clinician", "patient", "clinician", "patient", "clinician", "patient"],
@@ -107,7 +110,9 @@ test("clinical vocabulary breaks a tie when question rates are equal", () => {
   ]);
   const result = assignRoles(events, slots);
 
-  assert.equal(result.method, "clinical-vocabulary");
+  // "Are YOU taking", "YOUR chest" against "MY wife says I have been" -- the
+  // registers separate before vocabulary is needed.
+  assert.equal(result.method, "address-vs-report");
   assert.equal(result.resolved, true);
   assert.equal(result.events[0].speaker, "clinician");
   assert.equal(result.events[2].speaker, "patient");
@@ -183,7 +188,7 @@ test("an empty input is unresolved, not a crash", () => {
 test("the result reports the method and a note the demo can read out", () => {
   const { events, slots } = conversation(TWO_VOICES);
   const resolved = assignRoles(events, slots);
-  assert.match(resolved.note, /question/i);
+  assert.match(resolved.note, /addresses|question/i);
 
   const single = conversation([[0, "One voice only."]]);
   const unresolved = assignRoles(single.events, single.slots);
@@ -305,11 +310,11 @@ test("self-identification fires on room-02 and beats the question-density answer
   }
 });
 
-test("no role claim falls through to question density, unchanged", () => {
+test("no role claim falls through to the heuristics, unchanged", () => {
   const { events, slots } = conversation(TWO_VOICES);
   const result = assignRoles(events, slots);
 
-  assert.equal(result.method, "question-density");
+  assert.equal(result.method, "address-vs-report");
   assert.equal(result.resolved, true);
   assert.equal(result.slots.find((s) => s.role === "clinician")?.slot, 0);
 });
@@ -328,7 +333,7 @@ test("two slots both claiming a clinical role falls through rather than picking 
   // A contradiction is not a tie to be broken. The claim is discarded and the
   // result reports itself honestly as an inference.
   assert.notEqual(result.method, "self-identification");
-  assert.equal(result.method, "question-density");
+  assert.equal(result.resolved, true);
   assert.doesNotMatch(result.note, /identified itself/);
 });
 
@@ -350,4 +355,124 @@ test("a role claim after the opening window does not count", () => {
   // slot 1 wins on questions instead.
   assert.notEqual(result.method, "self-identification");
   assert.equal(result.slots.find((s) => s.role === "clinician")?.slot, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Regression: a REAL two-voice ward recording, replayed through the live path
+// on 2026-08-21. Question density inverted on it -- the nurse was dismissive
+// and the patient did most of the asking ("Is that bad?", "Could this be a
+// blood clot?", "You did not answer my question"), which is the exact failure
+// this file's header warned V1 had already seen once.
+//
+// The transcript below is Corti's own output for fixtures/audio/
+// test_twovoice_01, not a hand-written script.
+
+/** Nurse turns: slot 0 in the real recording. */
+const NURSE_TURNS = [
+  "Good morning, Anna. The chart says that you had a quiet night.",
+  "Oh, you have pneumonia.",
+  "Coughing hurts. That's hardly surprising.",
+  "Oh, yesterday you said your pain was only 1 out of 10. You're telling me it is worse?",
+  "Let's not diagnose ourself. I can give you some more pain relief.",
+  "Let me look at the new observations.",
+  "Your oxygen saturation is 87% despite 2 L of oxygen, respiratory rate 30.",
+  "Your news score is seven. This has changed significantly.",
+  "Now let's try sitting upright and try not to stand.",
+];
+
+/** Patient turns: slot 1 in the real recording. */
+const PATIENT_TURNS = [
+  "I was fine earlier, but something has changed, I have a sharp chest pain.",
+  "No, no, no, it's different. It started about 20 minutes ago.",
+  "But, but I'm puffing from just sitting here. Could this be a clot?",
+  "No, thank you, I don't, I don't want to just cover the pain.",
+  "Again. I feel dizzy too.",
+  "Is that bad? Could this be a blood clot?",
+  "You did not answer my question.",
+  "Please call my daughter as well.",
+];
+
+function realConversation(): { events: Event[]; slots: Map<EventId, number> } {
+  const events: Event[] = [];
+  const slots = new Map<EventId, number>();
+  const longer = Math.max(NURSE_TURNS.length, PATIENT_TURNS.length);
+  for (let i = 0; i < longer; i++) {
+    const nurse = NURSE_TURNS[i];
+    if (nurse !== undefined) {
+      const event = speech(nurse);
+      events.push(event);
+      slots.set(event.id, 0);
+    }
+    const patient = PATIENT_TURNS[i];
+    if (patient !== undefined) {
+      const event = speech(patient);
+      events.push(event);
+      slots.set(event.id, 1);
+    }
+  }
+  return { events, slots };
+}
+
+test("a real recording where the PATIENT asks most of the questions still attributes correctly", () => {
+  const { events, slots } = realConversation();
+
+  const assignment = assignRoles(events, slots);
+
+  assert.equal(assignment.resolved, true);
+  const nurseSlot = assignment.slots.find((slot) => slot.slot === 0);
+  const patientSlot = assignment.slots.find((slot) => slot.slot === 1);
+  assert.equal(nurseSlot?.role, "clinician", "slot 0 is the nurse in this recording");
+  assert.equal(patientSlot?.role, "patient", "slot 1 is the patient in this recording");
+});
+
+test("who is addressed decides before who asks, because a patient may out-question a nurse", () => {
+  const { events, slots } = realConversation();
+
+  const assignment = assignRoles(events, slots);
+
+  assert.equal(assignment.method, "address-vs-report");
+});
+
+test("the clinician addresses and the patient reports, and both rates are reported", () => {
+  const { events, slots } = realConversation();
+
+  const assignment = assignRoles(events, slots);
+
+  const nurse = assignment.slots.find((slot) => slot.slot === 0)!;
+  const patient = assignment.slots.find((slot) => slot.slot === 1)!;
+  assert.ok(nurse.secondPersonRate > nurse.firstPersonRate, "the nurse talks about the patient");
+  assert.ok(patient.firstPersonRate > patient.secondPersonRate, "the patient talks about themselves");
+});
+
+test("self-identification still outranks the address signal", () => {
+  const { events, slots } = realConversation();
+  // Put a claim on the slot the address signal would NOT choose.
+  const claim = speech("I'm the nurse, let me take a look.", 1);
+  const withClaim = [claim, ...events];
+  const slotsWithClaim = new Map(slots);
+  slotsWithClaim.set(claim.id, 1);
+
+  const assignment = assignRoles(withClaim, slotsWithClaim);
+
+  assert.equal(assignment.method, "self-identification");
+  assert.equal(assignment.slots.find((slot) => slot.slot === 1)?.role, "clinician");
+});
+
+test("question density still decides when neither speaker's register stands out", () => {
+  // No "you" and no "I" anywhere: the address signal has nothing to work with
+  // and must hand over rather than resolve on noise.
+  const { events, slots } = conversation([
+    [0, "Any pain overnight?"],
+    [1, "Not really."],
+    [0, "Any fever?"],
+    [1, "No."],
+    [0, "Sleeping alright?"],
+    [1, "Mostly."],
+  ]);
+
+  const result = assignRoles(events, slots);
+
+  assert.equal(result.method, "question-density");
+  assert.equal(result.resolved, true);
+  assert.equal(result.slots.find((slot) => slot.role === "clinician")?.slot, 0);
 });
