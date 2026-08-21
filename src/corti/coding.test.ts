@@ -47,6 +47,7 @@ function speech(quote: string): Event {
   return Object.freeze({
     id: `e_${String(seq).padStart(6, "0")}`,
     ts: 1_000_000 + seq * 1000,
+    patientId: "test_patient",
     room: "room-01",
     source: "speech",
     speaker: "patient",
@@ -60,6 +61,7 @@ function speech(quote: string): Event {
 function factFor(event: Event, observation: string): GroundedFact {
   return {
     candidateId: `c_${event.id}`,
+    patientId: event.patientId,
     room: event.room,
     observation,
     value: null,
@@ -160,6 +162,7 @@ test("a feed event is never coded", async () => {
   const vital: Event = Object.freeze({
     id: "e_900001",
     ts: 1_000_000,
+    patientId: "test_patient",
     room: "room-01",
     source: "vital",
     speaker: "unknown",

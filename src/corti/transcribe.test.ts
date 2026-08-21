@@ -88,7 +88,7 @@ test("cache rejects a key that would escape the directory", () => {
 test("transcribe maps the cached sample_17 response onto speech events", async () => {
   const log = new EventLog();
   const events = await transcribe(
-    { audioPath: AUDIO, room: "room-1", startedAt: 100_000 },
+    { audioPath: AUDIO, room: "room-1", patientId: "test_patient", startedAt: 100_000 },
     { append: (e) => log.append(e), cache: new DiskCache({ dir: TRANSCRIPTS }), fetch: offline },
   );
 
@@ -106,7 +106,7 @@ test("transcribe maps the cached sample_17 response onto speech events", async (
 test("ts is the recording offset added to startedAt", async () => {
   const log = new EventLog();
   const events = await transcribe(
-    { audioPath: AUDIO, room: "room-1", startedAt: 1_000_000 },
+    { audioPath: AUDIO, room: "room-1", patientId: "test_patient", startedAt: 1_000_000 },
     { append: (e) => log.append(e), cache: new DiskCache({ dir: TRANSCRIPTS }), fetch: offline },
   );
   // sample_17's only segment starts at 1632 ms into the recording.
@@ -117,7 +117,7 @@ test("transcribe appends through the injected append and returns the ids it got"
   const log = new EventLog();
   const appended: string[] = [];
   const events = await transcribe(
-    { audioPath: AUDIO, room: "room-2", startedAt: 0 },
+    { audioPath: AUDIO, room: "room-2", patientId: "test_patient", startedAt: 0 },
     {
       append: (e) => {
         const id = log.append(e);
@@ -137,7 +137,7 @@ test("transcribe appends through the injected append and returns the ids it got"
 test("the default cache key is derived from the audio filename", async () => {
   const log = new EventLog();
   const events = await transcribe(
-    { audioPath: "some/other/dir/sample_17_en.wav", room: "room-1", startedAt: 0 },
+    { audioPath: "some/other/dir/sample_17_en.wav", room: "room-1", patientId: "test_patient", startedAt: 0 },
     { append: (e) => log.append(e), cache: new DiskCache({ dir: TRANSCRIPTS }), fetch: offline },
   );
   assert.equal(events.length, 1, "resolved sample_17_en.transcript from the filename alone");
@@ -158,7 +158,7 @@ test("a multi-segment transcript becomes one event per segment, in order", async
 
   const log = new EventLog();
   const events = await transcribe(
-    { audioPath: "two_voices.wav", room: "room-3", startedAt: 50_000, cacheKey: "two_voices.transcript" },
+    { audioPath: "two_voices.wav", room: "room-3", patientId: "test_patient", startedAt: 50_000, cacheKey: "two_voices.transcript" },
     { append: (e) => log.append(e), cache, fetch: offline },
   );
 
@@ -178,7 +178,7 @@ test("a cache miss without credentials refuses to call rather than failing at th
   const log = new EventLog();
   await assert.rejects(
     transcribe(
-      { audioPath: "nothing.wav", room: "room-1", startedAt: 0 },
+      { audioPath: "nothing.wav", room: "room-1", patientId: "test_patient", startedAt: 0 },
       { append: (e) => log.append(e), cache: new DiskCache({ dir }), fetch: offline },
     ),
     /Cache miss for nothing.transcript and no credentials/,
@@ -189,8 +189,8 @@ test("a cache miss without credentials refuses to call rather than failing at th
 
 test("segmentToEvent is pure — same segment, same event, no clock", () => {
   const segment = { channel: 0, participant: 0, speakerId: 0, text: "Hello.", start: 10, end: 20 };
-  const first = segmentToEvent(segment, "room-1", 5);
-  const second = segmentToEvent(segment, "room-1", 5);
+  const first = segmentToEvent(segment, "room-1", "test_patient", 5);
+  const second = segmentToEvent(segment, "room-1", "test_patient", 5);
   assert.deepEqual(first, second);
   assert.equal(first.ts, 15);
 });
@@ -198,7 +198,7 @@ test("segmentToEvent is pure — same segment, same event, no clock", () => {
 test("a warm cache means no credentials are needed at all", async () => {
   const log = new EventLog();
   const events = await transcribe(
-    { audioPath: AUDIO, room: "room-1", startedAt: 0 },
+    { audioPath: AUDIO, room: "room-1", patientId: "test_patient", startedAt: 0 },
     { append: (e) => log.append(e), cache: new DiskCache({ dir: TRANSCRIPTS }), fetch: offline },
   );
   assert.equal(events.length, 1);

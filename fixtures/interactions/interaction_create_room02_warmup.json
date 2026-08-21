@@ -1,0 +1,4 @@
+{
+  "interactionId": "f07d6952-c547-4ad2-9f9d-46ff394ee325",
+  "websocketUrl": "wss://api.eu.corti.app/audio-bridge/v2/interactions/f07d6952-c547-4ad2-9f9d-46ff394ee325/streams?tenant-name=base"
+}

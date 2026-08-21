@@ -21,7 +21,7 @@
 import { readFileSync } from "node:fs";
 
 import type { DiskCache } from "./cache.ts";
-import type { Event, EventId, EventInput, Millis } from "../contracts/index.ts";
+import type { Event, EventId, EventInput, Millis, PatientId } from "../contracts/index.ts";
 
 export type CortiEnvironment = "eu" | "us";
 
@@ -66,6 +66,8 @@ export interface TranscribeRequest {
   /** Path to the audio file. Uploaded as-is. */
   readonly audioPath: string;
   readonly room: string;
+  /** Who the recording is about. Stamped onto every speech event. */
+  readonly patientId: PatientId;
   /** Wall-clock ts that recording offset 0 corresponds to. */
   readonly startedAt: Millis;
   /** Cache key. Defaults to the audio filename plus '.transcript'. */
@@ -91,10 +93,12 @@ function defaultCacheKey(audioPath: string): string {
 export function segmentToEvent(
   segment: CortiSegment,
   room: string,
+  patientId: PatientId,
   startedAt: Millis,
 ): EventInput {
   return {
     ts: startedAt + segment.start,
+    patientId,
     room,
     source: "speech",
     speaker: "unknown",
@@ -130,7 +134,7 @@ export async function transcribe(
 
   const events: Event[] = [];
   for (const segment of transcript.transcripts) {
-    const input = segmentToEvent(segment, request.room, request.startedAt);
+    const input = segmentToEvent(segment, request.room, request.patientId, request.startedAt);
     const id = deps.append(input);
     events.push(Object.freeze({ id, ...input }));
   }

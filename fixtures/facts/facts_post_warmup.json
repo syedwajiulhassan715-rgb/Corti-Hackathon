@@ -1,0 +1,22 @@
+{
+  "facts": [
+    {
+      "id": "f8949b5e-88bc-47c1-b228-3949454ac81f",
+      "text": "Patient reports increased shortness of breath since yesterday.",
+      "group": "history-of-present-illness",
+      "groupId": "11111111-1111-4000-8000-111111111111",
+      "source": "user",
+      "isDiscarded": false,
+      "updatedAt": "2026-08-20T23:38:48.71859168Z"
+    },
+    {
+      "id": "ef734b5c-6f51-4490-a5ad-e25949251b38",
+      "text": "SpO2 87% on room air, down from baseline 94%.",
+      "group": "vital-signs",
+      "groupId": "11111111-1111-4000-8000-111111111111",
+      "source": "user",
+      "isDiscarded": false,
+      "updatedAt": "2026-08-20T23:38:48.71959168Z"
+    }
+  ]
+}

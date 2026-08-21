@@ -1,0 +1,294 @@
+{
+  "interactions": [
+    {
+      "id": "f07d6952-c547-4ad2-9f9d-46ff394ee325",
+      "assignedUserId": "cbfd0337-396e-4885-8dec-46dfd9c61080",
+      "encounter": {
+        "identifier": "room-02-warmup-1755772800000",
+        "status": "planned",
+        "type": "first_consultation",
+        "period": {
+          "startedAt": "2025-08-21T10:40:00Z",
+          "endedAt": null
+        },
+        "title": "ECHO nurse round"
+      },
+      "patient": {
+        "identifier": "00990288",
+        "name": "Elena Petrova",
+        "gender": "female",
+        "birthDate": "1946-09-05T00:00:00Z",
+        "pronouns": ""
+      },
+      "endedAt": null,
+      "createdAt": "2026-08-20T23:38:47.300139Z",
+      "updatedAt": "2026-08-20T23:38:47.300139Z",
+      "websocketUrl": "wss://api.eu.corti.app/audio-bridge/v2/interactions/f07d6952-c547-4ad2-9f9d-46ff394ee325/streams?tenant-name=base",
+      "lastUpdated": "2026-08-20T23:38:47.300139Z",
+      "deletionReason": "",
+      "scheduleDeletionAt": null,
+      "deletedAt": null
+    },
+    {
+      "id": "b876eae1-41dc-425a-81c3-958ec17f741f",
+      "assignedUserId": "cbfd0337-396e-4885-8dec-46dfd9c61080",
+      "encounter": {
+        "identifier": "8b7008d9-33b1-420b-8e52-b84a08e01116",
+        "status": "planned",
+        "type": "consultation",
+        "period": {
+          "startedAt": "0001-01-01T00:00:00Z",
+          "endedAt": null
+        },
+        "title": ""
+      },
+      "patient": {
+        "identifier": "-",
+        "name": "-",
+        "gender": "unknown",
+        "birthDate": "0001-01-01T00:00:00Z",
+        "pronouns": "-"
+      },
+      "endedAt": null,
+      "createdAt": "2026-08-20T23:37:48.088205Z",
+      "updatedAt": "2026-08-20T23:37:48.088205Z",
+      "websocketUrl": "wss://api.eu.corti.app/audio-bridge/v2/interactions/b876eae1-41dc-425a-81c3-958ec17f741f/streams?tenant-name=base",
+      "lastUpdated": "2026-08-20T23:37:48.088205Z",
+      "deletionReason": "",
+      "scheduleDeletionAt": null,
+      "deletedAt": null
+    },
+    {
+      "id": "b022eb9e-0f18-4992-95c9-c878ae0a8042",
+      "assignedUserId": "cbfd0337-396e-4885-8dec-46dfd9c61080",
+      "encounter": {
+        "identifier": "echo-probe-elena-001",
+        "status": "in-progress",
+        "type": "first_consultation",
+        "period": {
+          "startedAt": "2026-08-21T09:00:00Z",
+          "endedAt": null
+        },
+        "title": "ECHO nurse round probe"
+      },
+      "patient": {
+        "identifier": "00990288",
+        "name": "Elena Petrova",
+        "gender": "female",
+        "birthDate": "1946-09-05T00:00:00Z",
+        "pronouns": ""
+      },
+      "endedAt": null,
+      "createdAt": "2026-08-20T23:21:25.608228Z",
+      "updatedAt": "2026-08-20T23:21:25.608228Z",
+      "websocketUrl": "wss://api.eu.corti.app/audio-bridge/v2/interactions/b022eb9e-0f18-4992-95c9-c878ae0a8042/streams?tenant-name=base",
+      "lastUpdated": "2026-08-20T23:21:25.608228Z",
+      "deletionReason": "",
+      "scheduleDeletionAt": null,
+      "deletedAt": null
+    },
+    {
+      "id": "06762452-c721-4312-99f0-c0419966d9ce",
+      "assignedUserId": "cbfd0337-396e-4885-8dec-46dfd9c61080",
+      "encounter": {
+        "identifier": "0bc397d8-fc70-40c5-9a81-d05ef952149b",
+        "status": "planned",
+        "type": "first_consultation",
+        "period": {
+          "startedAt": "0001-01-01T00:00:00Z",
+          "endedAt": null
+        },
+        "title": ""
+      },
+      "patient": {
+        "identifier": "-",
+        "name": "-",
+        "gender": "unknown",
+        "birthDate": "0001-01-01T00:00:00Z",
+        "pronouns": "-"
+      },
+      "endedAt": null,
+      "createdAt": "2026-08-20T18:50:36.797137Z",
+      "updatedAt": "2026-08-20T18:50:36.797137Z",
+      "websocketUrl": "wss://api.eu.corti.app/audio-bridge/v2/interactions/06762452-c721-4312-99f0-c0419966d9ce/streams?tenant-name=base",
+      "lastUpdated": "2026-08-20T18:50:36.797137Z",
+      "deletionReason": "",
+      "scheduleDeletionAt": null,
+      "deletedAt": null
+    },
+    {
+      "id": "1a64a231-0704-4026-b61e-b607388876e1",
+      "assignedUserId": "cbfd0337-396e-4885-8dec-46dfd9c61080",
+      "encounter": {
+        "identifier": "19d57fb0-8f46-4041-ab27-986c3bd8d206",
+        "status": "planned",
+        "type": "consultation",
+        "period": {
+          "startedAt": "0001-01-01T00:00:00Z",
+          "endedAt": null
+        },
+        "title": ""
+      },
+      "patient": {
+        "identifier": "-",
+        "name": "-",
+        "gender": "unknown",
+        "birthDate": "0001-01-01T00:00:00Z",
+        "pronouns": "-"
+      },
+      "endedAt": null,
+      "createdAt": "2026-08-20T16:56:12.07009Z",
+      "updatedAt": "2026-08-20T16:56:12.07009Z",
+      "websocketUrl": "wss://api.eu.corti.app/audio-bridge/v2/interactions/1a64a231-0704-4026-b61e-b607388876e1/streams?tenant-name=base",
+      "lastUpdated": "2026-08-20T16:56:12.07009Z",
+      "deletionReason": "",
+      "scheduleDeletionAt": null,
+      "deletedAt": null
+    },
+    {
+      "id": "fa3e7b9e-da9e-46fd-b2bd-9f27a91a6268",
+      "assignedUserId": "1391826c-a157-42a4-b249-05262281aa70",
+      "encounter": {
+        "identifier": "4e84f382-531a-49e0-9719-95e30b5ea120",
+        "status": "planned",
+        "type": "first_consultation",
+        "period": {
+          "startedAt": "2026-08-20T16:50:38.76762Z",
+          "endedAt": null
+        },
+        "title": "Consultation"
+      },
+      "patient": {
+        "identifier": "-",
+        "name": "-",
+        "gender": "unknown",
+        "birthDate": "0001-01-01T00:00:00Z",
+        "pronouns": "-"
+      },
+      "endedAt": null,
+      "createdAt": "2026-08-20T16:50:39.032036Z",
+      "updatedAt": "2026-08-20T16:50:39.032036Z",
+      "websocketUrl": "wss://api.eu.corti.app/audio-bridge/v2/interactions/fa3e7b9e-da9e-46fd-b2bd-9f27a91a6268/streams?tenant-name=base",
+      "lastUpdated": "2026-08-20T16:50:39.032036Z",
+      "deletionReason": "",
+      "scheduleDeletionAt": null,
+      "deletedAt": null
+    },
+    {
+      "id": "fc3f22c3-5468-43bd-91f6-d0a458bfb0c7",
+      "assignedUserId": "cbfd0337-396e-4885-8dec-46dfd9c61080",
+      "encounter": {
+        "identifier": "room-02",
+        "status": "planned",
+        "type": "first_consultation",
+        "period": {
+          "startedAt": "0001-01-01T00:00:00Z",
+          "endedAt": null
+        },
+        "title": ""
+      },
+      "patient": {
+        "identifier": "-",
+        "name": "-",
+        "gender": "unknown",
+        "birthDate": "0001-01-01T00:00:00Z",
+        "pronouns": "-"
+      },
+      "endedAt": null,
+      "createdAt": "2026-08-20T15:56:11.105441Z",
+      "updatedAt": "2026-08-20T15:56:11.105441Z",
+      "websocketUrl": "wss://api.eu.corti.app/audio-bridge/v2/interactions/fc3f22c3-5468-43bd-91f6-d0a458bfb0c7/streams?tenant-name=base",
+      "lastUpdated": "2026-08-20T15:56:11.105441Z",
+      "deletionReason": "",
+      "scheduleDeletionAt": null,
+      "deletedAt": null
+    },
+    {
+      "id": "01e4b5d2-66c5-40cb-b00d-16db3c91561b",
+      "assignedUserId": "8c527639-7a26-4a88-987e-4c4f90ba1ab7",
+      "encounter": {
+        "identifier": "b4b1c946-a5f0-4cfb-8e8d-95a24327fbbc",
+        "status": "planned",
+        "type": "first_consultation",
+        "period": {
+          "startedAt": "2026-08-20T15:30:56.485632Z",
+          "endedAt": null
+        },
+        "title": "Consultation"
+      },
+      "patient": {
+        "identifier": "-",
+        "name": "-",
+        "gender": "unknown",
+        "birthDate": "0001-01-01T00:00:00Z",
+        "pronouns": "-"
+      },
+      "endedAt": null,
+      "createdAt": "2026-08-20T15:30:56.799314Z",
+      "updatedAt": "2026-08-20T15:30:56.799314Z",
+      "websocketUrl": "wss://api.eu.corti.app/audio-bridge/v2/interactions/01e4b5d2-66c5-40cb-b00d-16db3c91561b/streams?tenant-name=base",
+      "lastUpdated": "2026-08-20T15:30:56.799314Z",
+      "deletionReason": "",
+      "scheduleDeletionAt": null,
+      "deletedAt": null
+    },
+    {
+      "id": "3a610efc-db38-4c6f-a6a2-9dd892d1a9ca",
+      "assignedUserId": "96dd1fcb-f0de-418e-9b38-84b0b6fef79b",
+      "encounter": {
+        "identifier": "79243fd4-3490-4ded-858b-6663ba846b9d",
+        "status": "planned",
+        "type": "first_consultation",
+        "period": {
+          "startedAt": "2026-08-20T15:30:29.5106Z",
+          "endedAt": null
+        },
+        "title": "Consultation"
+      },
+      "patient": {
+        "identifier": "-",
+        "name": "-",
+        "gender": "unknown",
+        "birthDate": "0001-01-01T00:00:00Z",
+        "pronouns": "-"
+      },
+      "endedAt": null,
+      "createdAt": "2026-08-20T15:30:29.824354Z",
+      "updatedAt": "2026-08-20T15:30:29.824354Z",
+      "websocketUrl": "wss://api.eu.corti.app/audio-bridge/v2/interactions/3a610efc-db38-4c6f-a6a2-9dd892d1a9ca/streams?tenant-name=base",
+      "lastUpdated": "2026-08-20T15:30:29.824354Z",
+      "deletionReason": "",
+      "scheduleDeletionAt": null,
+      "deletedAt": null
+    },
+    {
+      "id": "ab17b160-9645-4e63-8b52-5bbd0e145760",
+      "assignedUserId": "ca74892d-b7a9-4b7c-9bb4-d5d5ce0d854a",
+      "encounter": {
+        "identifier": "4ac8f6ad-ed82-4a34-8655-d4e079e90838",
+        "status": "planned",
+        "type": "first_consultation",
+        "period": {
+          "startedAt": "2026-08-20T15:29:58.972539Z",
+          "endedAt": null
+        },
+        "title": "Consultation"
+      },
+      "patient": {
+        "identifier": "-",
+        "name": "-",
+        "gender": "unknown",
+        "birthDate": "0001-01-01T00:00:00Z",
+        "pronouns": "-"
+      },
+      "endedAt": null,
+      "createdAt": "2026-08-20T15:29:59.310303Z",
+      "updatedAt": "2026-08-20T15:29:59.310303Z",
+      "websocketUrl": "wss://api.eu.corti.app/audio-bridge/v2/interactions/ab17b160-9645-4e63-8b52-5bbd0e145760/streams?tenant-name=base",
+      "lastUpdated": "2026-08-20T15:29:59.310303Z",
+      "deletionReason": "",
+      "scheduleDeletionAt": null,
+      "deletedAt": null
+    }
+  ]
+}

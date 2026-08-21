@@ -1,0 +1,38 @@
+{
+  "id": "a6a5a0e9-7e6c-4a10-8c1c-ca471c1367a1",
+  "name": "Nursing Note",
+  "templateRef": "corti-nursing-note",
+  "isStream": false,
+  "sections": [
+    {
+      "key": "corti-objective",
+      "name": "Objective",
+      "text": "Respiratory: Dyspnea at rest reported.\nOxygen saturation: Decreased from 94% baseline to 87% over 40 minutes on two consecutive readings.",
+      "sort": 0,
+      "createdAt": "2026-08-20T23:38:55.274917Z",
+      "updatedAt": "2026-08-20T23:38:55.274917Z"
+    },
+    {
+      "key": "corti-actions",
+      "name": "Actions",
+      "text": "SpO2 declined from 94% to 87% over 40 minutes on two consecutive measurements.\nReports dyspnea at rest.\nEscalated to on-call physician at 09:15.",
+      "sort": 1,
+      "createdAt": "2026-08-20T23:38:55.274917Z",
+      "updatedAt": "2026-08-20T23:38:55.274917Z"
+    },
+    {
+      "key": "corti-plan",
+      "name": "Plan",
+      "text": "",
+      "sort": 2,
+      "createdAt": "2026-08-20T23:38:55.274917Z",
+      "updatedAt": "2026-08-20T23:38:55.274917Z"
+    }
+  ],
+  "createdAt": "2026-08-20T23:38:55.274917Z",
+  "updatedAt": "2026-08-20T23:38:55.274917Z",
+  "outputLanguage": "en",
+  "usageInfo": {
+    "creditsConsumed": 0.024051999999999997
+  }
+}
