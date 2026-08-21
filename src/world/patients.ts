@@ -14,17 +14,55 @@
 // reasons about a record — projections/history — takes the record as an
 // argument and stays pure.
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+
+import type { PatientId } from "../contracts/index.ts";
 
 const RECORDS = "fixtures/provided/text";
 
-/** Which chart belongs to which bed. Hardcoded: see the header. */
+/**
+ * Which chart belongs to which bed. Hardcoded: see the header.
+ *
+ * The first three keep the rooms they already had — other workstreams build
+ * against room-01/02/03 meaning david_kim/elena_petrova/aisha_rahman, and
+ * that must not move. room-04..room-11 are the remaining eight provided
+ * charts (fixtures/provided/SOURCE.md), in the order SOURCE.md lists them,
+ * so the assignment is reproducible from the doc rather than arbitrary.
+ */
 export const ROOM_PATIENTS: Readonly<Record<string, string>> = Object.freeze({
   "room-01": "david_kim",
   "room-02": "elena_petrova",
   "room-03": "aisha_rahman",
+  "room-04": "harold_mitchell",
+  "room-05": "jamal_wright",
+  "room-06": "jane_smith",
+  "room-07": "lily_chen",
+  "room-08": "maria_gonzalez",
+  "room-09": "robert_okafor",
+  "room-10": "sarah_nguyen",
+  "room-11": "tom_baker",
 });
+
+/**
+ * The 11 provided chart slugs, in the same order as ROOM_PATIENTS above.
+ * Not derived from ROOM_PATIENTS with Object.values: object key order is an
+ * implementation detail we would rather not depend on, and this list is the
+ * one place that ordering is asserted explicitly.
+ */
+export const ALL_PATIENTS: readonly PatientId[] = Object.freeze([
+  "david_kim",
+  "elena_petrova",
+  "aisha_rahman",
+  "harold_mitchell",
+  "jamal_wright",
+  "jane_smith",
+  "lily_chen",
+  "maria_gonzalez",
+  "robert_okafor",
+  "sarah_nguyen",
+  "tom_baker",
+]);
 
 export interface Condition {
   /** ICD-10, as written on the problem list. */
@@ -140,8 +178,17 @@ export function loadRecord(slug: string): PatientRecord | undefined {
   const conditions = parseConditions(readIfPresent(dir, "conditions.md"));
   const medications = parseMedications(readIfPresent(dir, "medications.md"));
 
+  // Every provided chart names its notes `encounter_<date>_<type>.md`
+  // (fixtures/provided/SOURCE.md), but the date and type vary per patient —
+  // elena_petrova's are pneumonia notes, robert_okafor's are STEMI notes,
+  // and so on. Discovering the files by pattern, sorted by the date in the
+  // filename, is what lets one loader work for all 11 charts instead of one
+  // hardcoded per patient.
   const encounters: Encounter[] = [];
-  for (const file of ["encounter_2026-08-15_pneumonia.md", "encounter_2026-08-22_pneumonia_followup.md"]) {
+  const encounterFiles = existsSync(dir)
+    ? readdirSync(dir).filter((f) => /^encounter_\d{4}-\d{2}-\d{2}_.+\.md$/.test(f)).sort()
+    : [];
+  for (const file of encounterFiles) {
     const text = readIfPresent(dir, file);
     if (text === "") continue;
     encounters.push(
@@ -173,4 +220,35 @@ export function loadRecord(slug: string): PatientRecord | undefined {
 export function recordForRoom(room: string): PatientRecord | undefined {
   const slug = ROOM_PATIENTS[room];
   return slug === undefined ? undefined : loadRecord(slug);
+}
+
+/**
+ * Who is in this bed. The patientId every event from this room must carry.
+ *
+ * Returns undefined for a room nobody occupies, so a caller has to decide what
+ * to do about it rather than silently attributing an event to nobody.
+ */
+export function patientForRoom(room: string): PatientId | undefined {
+  return ROOM_PATIENTS[room];
+}
+
+/** Which bed a patient is in. The inverse of ROOM_PATIENTS. */
+export function roomForPatient(patientId: PatientId): string | undefined {
+  return Object.entries(ROOM_PATIENTS).find(([, slug]) => slug === patientId)?.[0];
+}
+
+/**
+ * Every provided chart that loads successfully, in ALL_PATIENTS order.
+ *
+ * A chart that fails to load is dropped rather than thrown, same as
+ * `loadRecord` itself — one bad fixture degrades the ward by one card, not
+ * the whole boot (test law).
+ */
+export function loadAllRecords(): PatientRecord[] {
+  const records: PatientRecord[] = [];
+  for (const slug of ALL_PATIENTS) {
+    const record = loadRecord(slug);
+    if (record !== undefined) records.push(record);
+  }
+  return records;
 }
