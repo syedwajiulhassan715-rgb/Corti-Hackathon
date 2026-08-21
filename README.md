@@ -4,7 +4,7 @@
 
 # ECHO
 
-### Every Clinical Observation
+
 
 **Most clinical systems remember events. ECHO remembers trajectories.**
 
