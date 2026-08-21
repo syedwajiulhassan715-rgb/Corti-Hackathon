@@ -33,6 +33,9 @@ import {
 import type { PatientPriority, PatientTrends, PriorityLevel } from "../contracts/index.ts";
 import { createCortiAuth } from "../corti/auth.ts";
 import { attributeLive } from "../pipeline/liveAttribution.ts";
+import { propose as proposeObservations } from "../pipeline/observations.ts";
+import { ground } from "../pipeline/grounding.ts";
+import { detectContradiction } from "../engines/contradiction.ts";
 import type { RoleAssignment } from "../pipeline/roles.ts";
 import { codeText } from "../corti/coding.ts";
 import { DiskCache } from "../corti/cache.ts";
@@ -498,6 +501,8 @@ export interface DemoRun {
   readonly factWindow: EventId[];
   /** Utterances already sent for coding, so a replayed segment is not re-coded. */
   readonly codedEventIds: Set<EventId>;
+  /** Grounded observations already written, keyed sourceEventId:observation. */
+  readonly groundedKeys: Set<string>;
   readonly factKeys: Set<string>;
   readonly decisions: Map<string, { approved: boolean; eventId: EventId }>;
   nextAudioSequence: number;
@@ -591,6 +596,7 @@ async function handleDemoStart(
     activities: [], eventIds: [], events: [...runEvents], finalTranscriptKeys: new Set(),
     transcriptSegments: [], partialTranscript: null,
     slots: new Map(), attribution: null, factWindow: [], codedEventIds: new Set(),
+    groundedKeys: new Set(),
     factKeys: new Set(), decisions: new Map(),
     nextAudioSequence: 0, monitorStep: 0,
     initialLevel, initialRank, previousLevel: initialLevel, previousRank: initialRank,
@@ -738,6 +744,8 @@ function codeUtterance(
         eventIds: [eventId],
         causedByEventIds: [eventId],
       });
+      // A code is the input propose() waits for, so grounding runs here.
+      groundLive(run, run.events);
     })
     .catch(() => {
       activity(run, "corti.code.unavailable", "CORTI CODING", "Coding unavailable for this segment", {
@@ -745,6 +753,56 @@ function codeUtterance(
         eventIds: [eventId],
       });
     });
+}
+
+/**
+ * Turn coded, speaker-attributed utterances into observations the clinical
+ * engine actually reads.
+ *
+ * Until this existed, nothing said in a live encounter could move a patient's
+ * level in either direction. The engine raises on `symptom` and `hcp_concern`;
+ * the live path only ever wrote Corti's own `corti_fact`, which no rule reads.
+ * The whole conversation was inert, and the simulated monitor was the only
+ * thing with a vote.
+ *
+ * Nothing new is invented here. propose() maps a Corti code to an observation
+ * using doctor-owned data in pipeline/observations.ts, and ground() refuses any
+ * candidate whose supporting utterance does not exist or whose expected
+ * speaker did not say it. A candidate the gate discards stays discarded --
+ * that refusal is the product working, not a case to route around.
+ *
+ * Runs after coding returns, because propose() only reads an utterance that
+ * already carries a code.
+ */
+function groundLive(run: DemoRun, live: Event[]): void {
+  const { grounded } = ground(proposeObservations(run.events), run.events);
+
+  for (const fact of grounded) {
+    const key = `${fact.eventId}:${fact.observation}`;
+    if (run.groundedKeys.has(key)) continue;
+    run.groundedKeys.add(key);
+
+    const id = appendLive(live, {
+      ts: fact.ts,
+      patientId: fact.patientId,
+      room: fact.room,
+      source: "speech",
+      // Grounded FROM the supporting utterance, never from the candidate.
+      speaker: fact.speaker,
+      quote: fact.quote,
+      code: run.events.find((event) => event.id === fact.eventId)?.code ?? null,
+      observation: fact.observation,
+      value: fact.value,
+      correlationId: run.runId,
+      causedByEventIds: [fact.eventId],
+    });
+    run.eventIds.push(id);
+    activity(run, "observation.grounded", "ECHO CLINICAL", `${fact.observation.replace(/_/g, " ")} · ${fact.speaker}`, {
+      detail: `"${fact.quote}" — grounded against the utterance that carried it`,
+      eventIds: [id],
+      causedByEventIds: [fact.eventId],
+    });
+  }
 }
 
 /**
@@ -1038,10 +1096,13 @@ async function sendDemoState(run: DemoRun, response: ServerResponse): Promise<vo
     ...events.flatMap((event) => event.causedByEventIds ?? []),
   ]);
   const evidenceEvents = live.filter((event) => cited.has(event.id));
+  // Speech against numbers. Reported, never scored: see engines/contradiction.
+  const contradiction = detectContradiction(live, trends.signals, run.projectionUntil);
   send(response, 200, {
     ...publicRun(run),
     patient: { patientId: run.patientId, displayId: "P-014", name: record.name, room: run.room, mrn: record.mrn },
     events, evidenceEvents, history: historyView, trends, care, priority, queue, proposals,
+    contradiction,
   });
 }
 

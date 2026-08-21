@@ -142,6 +142,14 @@ export interface DemoAttribution {
   }[];
 }
 
+export interface DemoContradiction {
+  present: true;
+  reassurance: { eventId: string; quote: string; speaker: string; ts: number };
+  worsening: string[];
+  note: string;
+  evidenceEventIds: string[];
+}
+
 export interface DemoRunSnapshot {
   runId: string;
   patientId: string;
@@ -159,6 +167,7 @@ export interface DemoRunSnapshot {
   transcriptSegments: DemoTranscriptSegment[];
   partialTranscript: string | null;
   attribution: DemoAttribution | null;
+  contradiction: DemoContradiction | null;
   activities: DemoActivity[];
   patient?: { patientId: string; displayId: string; name: string; room: string; mrn: string };
   events?: EchoEvent[];

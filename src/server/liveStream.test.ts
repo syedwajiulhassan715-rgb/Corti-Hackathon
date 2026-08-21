@@ -41,6 +41,7 @@ function run(): DemoRun {
     attribution: null,
     factWindow: [],
     codedEventIds: new Set(),
+    groundedKeys: new Set(),
     factKeys: new Set(),
     decisions: new Map(),
     nextAudioSequence: 0,

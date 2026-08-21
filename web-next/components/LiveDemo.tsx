@@ -32,6 +32,7 @@ import {
   sendDemoAudio,
   type DemoActivity,
   type DemoAttribution,
+  type DemoContradiction,
   type DemoRunSnapshot,
   type EchoEvent,
   type Proposal,
@@ -617,6 +618,7 @@ function Memory({ facts, run, memoryUpdated }: { facts: EchoEvent[]; run: DemoRu
         icon={<FileClock size={18} />}
       />
       <ExtractionPulse run={run} factCount={facts.length} />
+      <ContradictionCard contradiction={run.contradiction} />
       <div className="mt-6 grid gap-5 md:grid-cols-[1fr_auto_1fr]">
         <div className="border-l border-line pl-4">
           <p className="text-[10px] font-bold uppercase tracking-[.14em] text-faint">Before encounter</p>
@@ -1057,6 +1059,40 @@ function ExtractionPulse({ run, factCount }: { run: DemoRunSnapshot; factCount: 
         )}
       </div>
       <div className="extracting mt-2 h-[2px] w-full rounded-full" aria-hidden="true" />
+    </div>
+  );
+}
+
+/**
+ * The patient and the monitor disagree.
+ *
+ * Deliberately loud, and deliberately NOT a level badge. Nothing here changes
+ * a score -- "I feel fine" with a falling saturation is silent hypoxia, and a
+ * surface that let the reassurance soften the display would be wrong in the
+ * one case this card exists for. It states the disagreement and hands it to a
+ * human.
+ */
+function ContradictionCard({ contradiction }: { contradiction: DemoContradiction | null }) {
+  if (!contradiction) return null;
+
+  return (
+    <div
+      className="fact-enter mt-5 rounded border border-[var(--urgent,#f0883e)]/50 bg-[var(--urgent,#f0883e)]/10 p-4"
+      role="status"
+    >
+      <div className="flex items-start gap-3">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[#f0883e]" />
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#f0883e]">
+            The patient and the monitor disagree
+          </p>
+          <p className="mt-2 text-[13px] leading-relaxed">{contradiction.note}</p>
+          <p className="mt-2 text-[10px] uppercase tracking-wide text-faint">
+            Reported by the patient · {contradiction.worsening.length} vitals worsening ·
+            {" "}this changes no score
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
