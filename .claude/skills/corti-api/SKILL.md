@@ -181,6 +181,55 @@ Both fields required. Recording comes from the audio-bridge websocket.
 `wss://api.<env>.corti.app/audio-bridge/v2/interactions/<id>/streams?tenant-name=<tenant>`
 See `src/corti/stream.ts` for the implemented transport.
 
+### Config shape — verified against `@corti/sdk@5.0.0` generated types
+
+- **`factGenerationInterval` lives INSIDE `mode`.** Not at the top level of
+  the config. Placed at the top level it is ignored silently and the stream
+  falls back to the `fixed` default: ~60s between fact batches. This cost us
+  a demo rehearsal — facts looked hung for two minutes.
+  `mode: { type, outputLocale, factGenerationInterval }`.
+  - `fixed` (default): ~60s cadence.
+  - `fast_init`: logarithmic — first batch ~10s, then ~20s, ~26s, widening
+    to 60s. Costs more credits and produces more near-duplicates.
+- **`transcription.isDiarization` is deprecated, renamed `diarize`.** Both are
+  still accepted and `CONFIG_ACCEPTED` echoes both; `diarize` wins if both are
+  sent. We send both.
+- `transcription.participants` is required, not optional.
+
+### Audio
+
+Supported stream MIME types: `audio/ogg`, `audio/webm`, `audio/opus`,
+`audio/vorbis`, `audio/mpeg|mp3|mpeg3`, `audio/flac`, `audio/mp4|m4a`. For
+`audio/ogg` and `audio/webm` an optional codec parameter is allowed, and the
+allowed codecs are `opus` and `vorbis`. `audio/webm;codecs=opus` — what
+MediaRecorder gives us in Chrome — is supported.
+
+Omitting `audioFormat` makes the server auto-detect from the first chunk with
+ffprobe. Supplying it is recommended; an unsupported MIME type gives
+`CONFIG_REJECTED`, and audio that does not match the declared MIME type
+returns audio validation errors on the socket — **and the docs warn this can
+error silently in some cases**, so a stream that connects is not proof the
+audio is being decoded.
+
+Corti's documented capture guidance: **250ms chunks** ("sending much smaller
+chunks more frequently can degrade recognition accuracy"), **16 kHz**, and
+streamed at or near real-time rather than faster.
+
+### Ambient two-speaker capture (learned on stage, not from docs)
+
+Browser `getUserMedia` defaults — `echoCancellation`, `noiseSuppression`,
+`autoGainControl` — are tuned for one near-field speaker on a call. In a
+two-person ambient encounter they gate the further speaker out as background,
+which presents as the patient's sentences going missing from the transcript.
+Turn all three OFF for ambient capture.
+
+### SDKs
+
+`@corti/sdk` (v5, `corticph/corti-sdk-javascript`, Fern-generated) carries the
+authoritative request/response types — worth installing purely to read them,
+even where the hand-rolled transport stays. `@corti/ambient-web` is a web
+component for ambient capture. Neither is on ECHO's path today.
+
 ## Coding
 
 `POST /v2/tools/coding/` — see `src/corti/coding.ts`. Body:

@@ -634,14 +634,20 @@ async function handleDemoStart(
       configuration: {
         transcription: {
           primaryLanguage: "en",
+          // `diarize` is the current name; `isDiarization` is deprecated but
+          // still accepted, and CONFIG_ACCEPTED echoes both. Sending both
+          // keeps an older tenant working without a second round trip.
+          diarize: true,
           isDiarization: true,
           isMultichannel: false,
           participants: [{ channel: 0, role: "multiple" }],
         },
-        mode: { type: "facts", outputLocale: "en" },
+        // factGenerationInterval sits INSIDE mode. At the top level Corti
+        // ignores it and falls back to `fixed` -- roughly 60s between fact
+        // batches, which reads on stage as the demo having hung.
+        mode: { type: "facts", outputLocale: "en", factGenerationInterval: "fast_init" },
         retentionPolicy: "none",
         audioFormat: audioFormat!,
-        factGenerationInterval: "fast_init",
       },
     });
     run.status = "recording";

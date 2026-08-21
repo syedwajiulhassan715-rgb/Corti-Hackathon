@@ -26,6 +26,10 @@ export interface StreamParticipant {
 export interface StreamConfiguration {
   readonly transcription: {
     readonly primaryLanguage: string;
+    /** Enable diarization. Renamed from isDiarization; takes precedence. */
+    readonly diarize?: boolean;
+    /** Deprecated by Corti in favour of `diarize`, still accepted. Sent for
+     *  backward compatibility; CONFIG_ACCEPTED echoes both. */
     readonly isDiarization?: boolean;
     readonly isMultichannel?: boolean;
     readonly participants?: readonly StreamParticipant[];
@@ -33,13 +37,22 @@ export interface StreamConfiguration {
   readonly mode: {
     readonly type: "facts" | "transcription";
     readonly outputLocale: string;
+    /**
+     * Rate at which facts are generated. Belongs HERE, inside mode -- Corti
+     * ignores it at the top level of the config and silently falls back to
+     * `fixed`, which is ~60s between fact batches. Confirmed against
+     * @corti/sdk StreamConfigMode.
+     *
+     * `fast_init` follows a logarithmic curve: first batch around 10s, then
+     * 20s, then 26s, widening to the 60s default.
+     */
+    readonly factGenerationInterval?: "fixed" | "fast_init";
   };
   readonly retentionPolicy?: "retain" | "none";
   readonly audioFormat?: string;
   readonly audioEvents?: {
     readonly enabled: boolean;
   };
-  readonly factGenerationInterval?: "fixed" | "fast_init";
   readonly replacements?: readonly {
     readonly find: string;
     readonly replace: string;

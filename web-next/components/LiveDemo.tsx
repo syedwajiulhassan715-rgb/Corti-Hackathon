@@ -104,8 +104,20 @@ export function LiveDemo() {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
         throw new Error("This browser does not provide microphone recording.");
       }
+      // Ambient capture, not a phone call. Browser noise suppression and echo
+      // cancellation are tuned for ONE near-field speaker and treat a second
+      // voice across the bed as background to be gated out -- which is heard
+      // on stage as the patient's lines going missing. Off for both.
+      // AGC stays off too: it rides the gain down during the loud speaker's
+      // turn and takes the quieter one under the floor with it.
       const media = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 1,
+          sampleRate: 16_000,
+        },
         video: false,
       });
       mediaRef.current = media;
@@ -143,7 +155,9 @@ export function LiveDemo() {
       };
       recorderRef.current = nextRecorder;
       startMeter(media);
-      nextRecorder.start(500);
+      // 250ms is Corti's documented optimum. Smaller chunks degrade
+      // recognition accuracy; larger ones delay every downstream stage.
+      nextRecorder.start(250);
     } catch (reason) {
       setError((reason as Error).message);
       setCaptureFailed(true);
