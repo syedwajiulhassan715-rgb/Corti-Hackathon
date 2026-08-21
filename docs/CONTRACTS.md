@@ -1,11 +1,14 @@
 # Contracts
 Locked in 30 minutes, then frozen. Only Event is stored. Everything else is a projection.
 
-Event               id, ts, room, source, speaker, quote, code, observation, value
+Event               id, ts, patientId, room, source, speaker, quote, code, observation, value,
+                    correlationId?, causedByEventIds?
   source            speech | vital | lab | movement | order | result | action
   speaker           clinician | patient | nurse | family | unknown
   quote empty for non-speech. code null if uncoded, and always null for feed sources
   (vital, lab, movement, order, result). Only speech is coded.
+  correlationId scopes a live/demo encounter. causedByEventIds names direct
+  evidence parents for derived priority, notification and action events.
 
 PatientState        room, level, reason_text, evidence[], changed_at, previous_level
   previous_level is consumed by web/, which animates the change. Not optional.

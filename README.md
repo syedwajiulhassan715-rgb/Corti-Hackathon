@@ -25,9 +25,22 @@ Open `http://localhost:8787/ward/`. Use Reset before every rehearsal. The
 scripted path advances from a calm ward through persistent deterioration,
 care-gap detection, resource preparation, human approval, and exact replay.
 
+For the live causal presentation, open `http://localhost:8787/demo/live/` and
+choose either **Start live encounter** (real browser microphone → Corti
+Streams) or the explicitly labelled **recorded fallback**.
+
+If startup reports `EADDRINUSE`, a server is already listening on that port.
+Use the existing URL, or choose another PowerShell port before starting:
+
+```powershell
+$env:PORT=8791
+npm start
+```
+
 ## Core routes
 
 - `/ward/` — attention queue, selected patient, replay, and presenter controls
+- `/demo/live/` — one-patient live Corti and visible causal workflow
 - `/patients/elena_petrova/` — standalone longitudinal patient view
 - `/health` — process health and event count
 
